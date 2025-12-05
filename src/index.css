@@ -9,8 +9,6 @@ body {
     margin: 0;
 }
 
-/* src/styles.css */
-
 :root {
     --ocr-accent: #4890ff;
     --ocr-bg: #ffffff;
@@ -19,27 +17,27 @@ body {
     --ocr-scale: 1.05;
 }
 
-/* --- CRITICAL SCROLL FIX --- */
-/* Force the browser window to NEVER scroll. 
-   Scrolling must happen inside the app's containers. */
+/* --- SCROLLING LOGIC --- */
+
+/* 1. Default State: Allow scrolling normally */
 html, body {
-    width: 100%;
-    height: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden !important; /* This stops the "scroll below" behavior */
-    overscroll-behavior: none;   /* Prevents "bounce" on Mac/Mobile */
+    /* Only hide horizontal overflow to prevent overlay breakout */
+    overflow-x: hidden; 
 }
 
-/* --- OVERLAY CONTAINER --- */
-.ocr-overlay-container {
-    pointer-events: none; 
-    z-index: 99999;
-    /* Ensure it doesn't trigger scrollbars */
-    width: 0; 
-    height: 0; 
-    overflow: visible;
+/* 2. Reader Mode Lock: Only applied when viewing a chapter */
+html.ocr-reader-mode, 
+html.ocr-reader-mode body {
+    /* This stops the window from scrolling, forcing the App's internal div to handle it */
+    overflow: hidden !important;
+    height: 100%;
 }
+
+/* --- REST OF CSS (Unchanged) --- */
+/* ... (Overlay Container, TextBox, Modal styles remain the same) ... */
+.ocr-overlay-container { pointer-events: none; z-index: 99999; }
 
 /* --- TEXT BOX CARD STYLING --- */
 .gemini-ocr-text-box {
