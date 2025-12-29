@@ -56,12 +56,10 @@ export const OCRProvider = ({ children }: { children: ReactNode }) => {
     const [activeImageSrc, setActiveImageSrc] = useState<string | null>(null);
     const [debugLog, setDebugLog] = useState<string[]>([]);
 
-    // Dictionary State
     const [dictPopup, setDictPopup] = useState<DictPopupState>({
         visible: false, x: 0, y: 0, results: [], isLoading: false, systemLoading: false
     });
 
-    // Global Dialog State
     const [dialogState, setDialogState] = useState<DialogState>({
         isOpen: false, type: 'alert', message: ''
     });
@@ -83,13 +81,15 @@ export const OCRProvider = ({ children }: { children: ReactNode }) => {
 
     // --- Dialog Helpers ---
     
-    // FIX: Explicitly reset onConfirm/onCancel to undefined to prevent state leakage (The Loop Fix)
     const showDialog = useCallback((config: Partial<DialogState>) => {
         setDialogState(prev => ({ 
             ...prev, 
             isOpen: true, 
+            // Resets ensure we don't inherit callbacks or button text from previous dialogs
             onConfirm: undefined, 
             onCancel: undefined,
+            // Cast to any to clear properties that might not be in the strict type yet
+            ...({ confirmText: undefined, cancelText: undefined } as any),
             ...config 
         }));
     }, []);
@@ -103,6 +103,7 @@ export const OCRProvider = ({ children }: { children: ReactNode }) => {
     }, [showDialog]);
 
     const showAlert = useCallback((title: string, message: React.ReactNode) => {
+        // Since confirmText is reset by showDialog, this will default to "OK" in GlobalDialog
         showDialog({ type: 'alert', title, message });
     }, [showDialog]);
 

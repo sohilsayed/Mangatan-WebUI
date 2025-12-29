@@ -14,6 +14,12 @@ export interface DictionaryMeta {
     enabled: boolean;
 }
 
+export interface AppVersionInfo {
+    version: string;
+    variant: 'browser' | 'native-webview' | 'desktop' | 'ios' | 'unknown';
+    update_status?: 'idle' | 'downloading' | 'ready';
+}
+
 const MANGA_CHAPTERS_QUERY = `
 query MangaIdToChapterIDs($id: Int!) {
   manga(id: $id) {
@@ -156,6 +162,8 @@ export const manageDictionary = async (action: 'Toggle' | 'Delete' | 'Reorder', 
     });
 };
 
+// --- OCR / CHAPTER API ---
+
 export const checkChapterStatus = async (baseUrl: string, creds?: AuthCredentials): Promise<ChapterStatus> => {
     try {
         const body: any = { base_url: baseUrl, context: 'Check Status' };
@@ -250,4 +258,54 @@ export const cleanPunctuation = (text: string): string => {
         .replace(/([⁉⁈‼⁇])[!?:]+/g, '$1')
         .replace(/[!?:]+([⁉⁈‼⁇])/g, '$1');
     return t.replace(/\u0020/g, '');
+};
+
+// --- SYSTEM API (Update & Versioning) ---
+
+export const getAppVersion = async (): Promise<AppVersionInfo> => {
+    try {
+        const res = await apiRequest<{version: string, variant?: string, update_status?: string}>('/api/system/version');
+        return {
+            version: res.version || '0.0.0',
+            variant: (res.variant as any) || 'unknown',
+            update_status: (res.update_status as any) || 'idle' // <--- Essential mapping
+        };
+    } catch (e) {
+        return { version: '0.0.0', variant: 'unknown', update_status: 'idle' };
+    }
+};
+
+export const triggerAppUpdate = async (url: string, filename: string) => {
+    return apiRequest('/api/system/download-update', {
+        method: 'POST',
+        body: { url, filename }
+    });
+};
+
+export const installAppUpdate = async () => {
+    return apiRequest('/api/system/install-update', { method: 'POST' });
+};
+
+export const checkForUpdates = async (currentVersion: string, variant: string) => {
+    try {
+        const res = await fetch('https://api.github.com/repos/KolbyML/Mangatan/releases/latest');
+        const json = await res.json();
+        const latestTag = json.tag_name?.replace(/^v/, '');
+        const current = currentVersion.replace(/^v/, '');
+        
+        if (latestTag && latestTag !== current) {
+            let targetString = '';
+            if (variant === 'native-webview') targetString = 'Android-NativeWebview';
+            else if (variant === 'browser') targetString = 'Android-Browser';
+            
+            if (!targetString) return { hasUpdate: false };
+
+            const asset = json.assets.find((a: any) => a.name.includes(targetString) && a.name.endsWith('.apk'));
+            
+            if (asset) {
+                return { hasUpdate: true, version: latestTag, url: asset.browser_download_url, name: asset.name, releaseUrl: json.html_url };
+            }
+        }
+        return { hasUpdate: false };
+    } catch (e) { return { hasUpdate: false }; }
 };

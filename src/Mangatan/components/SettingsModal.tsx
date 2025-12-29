@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useOCR } from '@/Mangatan/context/OCRContext';
 import { COLOR_THEMES, DEFAULT_SETTINGS } from '@/Mangatan/types';
-import { apiRequest } from '@/Mangatan/utils/api';
+import { apiRequest, getAppVersion, checkForUpdates, triggerAppUpdate, installAppUpdate } from '@/Mangatan/utils/api';
 import { DictionaryManager } from './DictionaryManager';
 
 const checkboxLabelStyle: React.CSSProperties = {
@@ -13,27 +13,89 @@ const checkboxInputStyle: React.CSSProperties = {
 };
 
 export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const { settings, setSettings, showConfirm, showAlert, showProgress, closeDialog } = useOCR();
+    const { settings, setSettings, showConfirm, showAlert, showProgress, closeDialog, showDialog } = useOCR();
     const [localSettings, setLocalSettings] = useState(settings);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [dictManagerKey, setDictManagerKey] = useState(0);
 
+    // --- UPDATE STATE ---
+    const [appVersion, setAppVersion] = useState<string>('...');
+    const [updateAvailable, setUpdateAvailable] = useState<any>(null);
+    const [updateStatus, setUpdateStatus] = useState<string>('idle');
+
+    // --- POLL STATUS ---
+    useEffect(() => {
+        let isMounted = true;
+
+        const checkStatus = async () => {
+            try {
+                const info = await getAppVersion();
+                if (!isMounted) return;
+
+                if (info.version !== '0.0.0') {
+                    setAppVersion(`${info.version} (${info.variant})`);
+                }
+
+                // 1. Prioritize System Status
+                if (info.update_status && info.update_status !== 'idle') {
+                    setUpdateStatus(info.update_status);
+                } 
+                // 2. Only if system is idle, check GitHub
+                else if (info.variant !== 'unknown' && info.variant !== 'desktop' && info.variant !== 'ios') {
+                    if (!updateAvailable) {
+                        const update = await checkForUpdates(info.version, info.variant);
+                        if (isMounted && update.hasUpdate) setUpdateAvailable(update);
+                    }
+                    // Only set to idle if we aren't currently downloading locally
+                    // This prevents flickering if the poll is slightly faster than the backend state update
+                    if (updateStatus !== 'downloading' && updateStatus !== 'ready') {
+                        setUpdateStatus('idle');
+                    }
+                }
+            } catch (e) { console.error(e); }
+        };
+
+        checkStatus();
+        const interval = setInterval(checkStatus, 2000); // Poll every 2s
+        return () => { isMounted = false; clearInterval(interval); };
+    }, [updateStatus, updateAvailable]); 
+
+    // --- ACTIONS ---
+
+    const handleDownload = () => {
+        if (!updateAvailable) return;
+        showDialog({
+            type: 'confirm',
+            title: 'Download Update',
+            message: 'Version ' + updateAvailable.version + ' will download in the background.',
+            // @ts-ignore
+            confirmText: 'Start',
+            cancelText: 'Cancel',
+            onConfirm: async () => {
+                await triggerAppUpdate(updateAvailable.url, updateAvailable.name);
+                setUpdateStatus('downloading'); // Immediate UI feedback
+                // Alert removed to prevent confusion
+            }
+        });
+    };
+
+    const handleInstall = async () => {
+        try {
+            await installAppUpdate();
+        } catch (e) {
+            showAlert('Error', 'Failed to launch installer.');
+        }
+    };
+
+    // --- SETTINGS LOGIC ---
     const handleChange = async (key: keyof typeof settings, value: any) => {
-        // Trigger default installation if enabling Yomitan for the first time
         if (key === 'enableYomitan' && value === true) {
              try {
-                showProgress('Checking dictionary status...');
+                showProgress('Installing dictionaries...');
                 const res = await apiRequest<{status: string, message: string}>('/api/yomitan/install-defaults', { method: 'POST' });
-                
                 closeDialog();
-                
-                if (res.status === 'ok' && res.message.includes('Imported')) {
-                    showAlert('Dictionary Installed', 'The default dictionary has been installed successfully.');
-                }
-            } catch (e) {
-                console.error("Failed to install defaults", e);
-                closeDialog();
-            }
+                if (res.status === 'ok' && res.message.includes('Imported')) showAlert('Success', 'Dictionaries installed.');
+            } catch (e) { closeDialog(); }
         }
         setLocalSettings((prev) => ({ ...prev, [key]: value }));
     };
@@ -46,117 +108,113 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     };
 
     const resetToDefaults = () => {
-        showConfirm(
-            'Reset Defaults?',
-            'This will reset all OCR settings to their default values.',
-            () => {
-                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                
-                // Uses the updated DEFAULT_SETTINGS from types.ts which handles native detection
-                setLocalSettings({
-                    ...DEFAULT_SETTINGS,
-                    mobileMode: isMobile,
-                });
-                closeDialog(); 
-            }
-        );
+        showConfirm('Reset?', 'Revert to defaults?', () => {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            setLocalSettings({ ...DEFAULT_SETTINGS, mobileMode: isMobile });
+            closeDialog(); 
+        });
     };
 
     const purgeCache = () => {
-        showConfirm('Purge Cache?', 'Are you sure you want to purge the Server OCR Cache?', async () => {
+        showConfirm('Purge Cache?', 'Delete server cache?', async () => {
             try {
-                showProgress('Purging Cache...');
+                showProgress('Purging...');
                 await apiRequest(`/api/ocr/purge-cache`, { method: 'POST' });
                 closeDialog(); 
-                showAlert('Success', 'Cache Purged');
-            } catch (e) {
-                closeDialog();
-                showAlert('Error', 'Failed to purge cache');
-            }
+                showAlert('Success', 'Cache deleted.');
+            } catch (e) { closeDialog(); showAlert('Error', 'Failed.'); }
         });
     };
 
     const resetYomitanDB = () => {
-        showConfirm(
-            'Reset Dictionary DB?',
-            <div>
-                <p>Are you sure you want to <b>RESET</b> the dictionary database?</p>
-                <br/>
-                <p>This will <b>DELETE all custom dictionaries</b> and restore the default JMdict.</p>
-                <p style={{color: '#ff484b'}}>This action cannot be undone.</p>
-            </div>,
-            async () => {
-                try {
-                    showProgress('Resetting Database & Importing Defaults...');
-                    const res = await apiRequest<{status: string, message: string}>(`/api/yomitan/reset`, { method: 'POST' });
-                    
-                    if (res.status === 'ok') {
-                        closeDialog(); 
-                        showAlert('Success', 'Dictionary database reset successfully.\nThe default dictionary is being imported in the background.');
-                        setDictManagerKey(prev => prev + 1);
-                    } else {
-                         throw new Error(res.message || 'Unknown Error');
-                    }
-                } catch (e: any) {
-                    closeDialog();
-                    showAlert('Error', 'Failed to reset DB: ' + e.message);
-                }
-            }
-        );
+        showConfirm('Reset DB?', 'Delete all dictionaries?', async () => {
+            try {
+                showProgress('Resetting...');
+                const res = await apiRequest<{status: string}>(`/api/yomitan/reset`, { method: 'POST' });
+                if (res.status === 'ok') {
+                    closeDialog(); 
+                    showAlert('Success', 'Reset complete.');
+                    setDictManagerKey(p => p + 1);
+                } else throw new Error();
+            } catch (e) { closeDialog(); showAlert('Error', 'Failed.'); }
+        });
     };
 
-    const handleImportClick = () => {
-        fileInputRef.current?.click();
-    };
+    const handleImportClick = () => fileInputRef.current?.click();
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
+        if (e.target.files?.[0]) {
             const file = e.target.files[0];
             const formData = new FormData();
             formData.append('file', file);
-
             try {
-                showProgress(`Importing ${file.name}...\nPlease do not close this page.`);
-                
-                const res = await fetch('/api/yomitan/import', {
-                    method: 'POST',
-                    body: formData,
-                });
+                showProgress(`Importing...`);
+                const res = await fetch('/api/yomitan/import', { method: 'POST', body: formData });
                 const json = await res.json();
-                
                 closeDialog(); 
-
-                if (json.status === 'ok') {
-                    showAlert('Import Successful', json.message);
-                    setDictManagerKey(prev => prev + 1);
-                } else {
-                    showAlert('Import Failed', json.message);
-                }
-            } catch (err) {
-                closeDialog();
-                showAlert('Import Failed', String(err));
-            }
-            
+                showAlert(json.status === 'ok' ? 'Success' : 'Failed', json.message);
+                if (json.status === 'ok') setDictManagerKey(p => p + 1);
+            } catch (err) { closeDialog(); showAlert('Error', String(err)); }
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
-    // Check environment (Frontend)
     const isNativeApp = typeof navigator !== 'undefined' && navigator.userAgent.includes('MangatanNative');
 
     return (
         <div className="ocr-modal-overlay" onClick={onClose}>
-            <div 
-                className="ocr-modal"
-                onClick={(e) => e.stopPropagation()}
-            >
+            <div className="ocr-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="ocr-modal-header">
                     <h2>Settings</h2>
                 </div>
                 <div className="ocr-modal-content">
                     <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".zip" onChange={handleFileChange} />
 
-                    {/* Show Manager if Native OR Enabled */}
+                    {/* --- UPDATE BANNER --- */}
+                    
+                    {/* DOWNLOADING STATE */}
+                    {updateStatus === 'downloading' && (
+                        <div style={{ backgroundColor: '#f39c12', color: 'white', padding: '15px', borderRadius: '5px', marginBottom: '15px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                                {/* Simple CSS Spinner */}
+                                <div style={{
+                                    width: '18px', height: '18px', 
+                                    border: '3px solid rgba(255,255,255,0.3)', 
+                                    borderTop: '3px solid white', 
+                                    borderRadius: '50%',
+                                    animation: 'spin 1s linear infinite'
+                                }} />
+                                <b>Downloading Update...</b>
+                            </div>
+                            <small style={{opacity: 0.9}}>Please check your notification tray.</small>
+                            <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                        </div>
+                    )}
+
+                    {/* READY STATE */}
+                    {updateStatus === 'ready' && (
+                        <div style={{ backgroundColor: '#27ae60', color: 'white', padding: '10px', borderRadius: '5px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span><b>Download Complete</b></span>
+                            <button type="button" onClick={handleInstall} style={{ backgroundColor: 'white', color: '#27ae60', border: 'none', fontWeight: 'bold', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+                                Install Now
+                            </button>
+                        </div>
+                    )}
+
+                    {/* IDLE + UPDATE AVAILABLE */}
+                    {updateStatus === 'idle' && updateAvailable && (
+                        <div style={{ backgroundColor: '#3498db', color: 'white', padding: '10px', borderRadius: '5px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span><b>New Version:</b> {updateAvailable.version}</span>
+                            <button type="button" onClick={handleDownload} style={{ backgroundColor: 'white', color: '#2980b9', border: 'none', fontWeight: 'bold', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+                                Download
+                            </button>
+                        </div>
+                    )}
+
+                    <div style={{ textAlign: 'center', marginBottom: '10px', color: '#666', fontSize: '0.9em' }}>
+                        Version: {appVersion}
+                    </div>
+
                     {(isNativeApp || localSettings.enableYomitan) && (
                         <DictionaryManager key={dictManagerKey} onImportClick={handleImportClick} />
                     )}
@@ -224,8 +282,8 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                 </div>
                 <div className="ocr-modal-footer">
                     <button type="button" className="danger" onClick={purgeCache}>Purge Cache</button>
-                    <button type="button" className="danger" onClick={resetYomitanDB} style={{ background: '#c0392b', borderColor: '#e74c3c' }}>Reset Dictionary DB</button>
-                    <button type="button" className="warning" onClick={resetToDefaults} style={{ marginRight: 'auto', background: '#e67e22', borderColor: '#d35400' }}>Reset Defaults</button>
+                    <button type="button" className="danger" onClick={resetYomitanDB} style={{ background: '#c0392b', borderColor: '#e74c3c' }}>Reset DB</button>
+                    <button type="button" className="warning" onClick={resetToDefaults} style={{ marginRight: 'auto', background: '#e67e22', borderColor: '#d35400' }}>Defaults</button>
                     <button type="button" onClick={onClose}>Cancel</button>
                     <button type="button" className="primary" onClick={save}>Save & Reload</button>
                 </div>

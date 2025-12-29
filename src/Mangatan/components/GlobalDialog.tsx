@@ -5,16 +5,19 @@ import { useOCR } from '@/Mangatan/context/OCRContext';
 export const GlobalDialog: React.FC = () => {
     const { dialogState, closeDialog } = useOCR();
     const { isOpen, type, title, message, onConfirm, onCancel } = dialogState;
+    
+    // Support custom button text without changing global types yet
+    const confirmText = (dialogState as any).confirmText || (type === 'confirm' ? 'Confirm' : 'OK');
+    const cancelText = (dialogState as any).cancelText || 'Cancel';
 
     if (!isOpen) return null;
 
     const handleConfirm = () => {
         if (onConfirm) {
-            // FIX: If there is an action, execute it. 
-            // Do NOT auto-close. The action is responsible for closing or transitioning state.
             onConfirm(); 
+            // Auto-close for everything except progress bars
+            if (type !== 'progress') closeDialog();
         } else {
-            // If it's just an alert (no action), close it.
             closeDialog();
         }
     };
@@ -45,14 +48,14 @@ export const GlobalDialog: React.FC = () => {
                 <div className="ocr-dialog-actions">
                     {type === 'confirm' && (
                         <button type="button" className="ocr-dialog-btn-cancel" onClick={handleCancel}>
-                            Cancel
+                            {cancelText}
                         </button>
                     )}
                     
-                    {/* Hide OK button for progress dialogs */}
+                    {/* Hide button for progress type */}
                     {type !== 'progress' && (
                         <button type="button" className="ocr-dialog-btn-confirm" onClick={handleConfirm}>
-                            {type === 'confirm' ? 'Confirm' : 'OK'}
+                            {confirmText}
                         </button>
                     )}
                 </div>

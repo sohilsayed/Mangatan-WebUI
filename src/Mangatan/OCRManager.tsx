@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useMangaObserver } from './hooks/useMangaObserver';
 import { ImageOverlay } from './components/ImageOverlay';
 import { SettingsModal } from './components/SettingsModal';
@@ -6,14 +6,15 @@ import { ChapterListInjector } from './components/ChapterListInjector';
 import { YomitanPopup } from './components/YomitanPopup'; 
 import { useOCR } from './context/OCRContext';
 import { GlobalDialog } from './components/GlobalDialog';
+import { getAppVersion, checkForUpdates, triggerAppUpdate } from './utils/api';
 
 const PUCK_SIZE = 50; 
 const STORAGE_KEY = 'mangatan_ocr_puck_pos';
 
 export const OCRManager = () => {
     const images = useMangaObserver(); 
-    // 1. Get setDictPopup from context
-    const { settings, setDictPopup } = useOCR();
+    // FIX: Destructure showDialog and showAlert here so they are available to use
+    const { settings, setDictPopup, showDialog, showAlert } = useOCR();
     const [showSettings, setShowSettings] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
@@ -22,6 +23,61 @@ export const OCRManager = () => {
     const dragStart = useRef({ x: 0, y: 0 });
     const initialPuckPos = useRef({ x: 0, y: 0 });
 
+    // --- AUTO-UPDATE CHECK (Android Only) ---
+    useEffect(() => {
+        const check = async () => {
+            // Check if running on Android
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            if (!isAndroid) return;
+
+            // Get Current Version & Variant (Browser vs Native)
+            const info = await getAppVersion();
+            if (!info || info.version === '0.0.0' || info.variant === 'unknown') return; 
+
+            // Check GitHub for the specific APK variant
+            const update = await checkForUpdates(info.version, info.variant);
+            
+            if (update.hasUpdate) {
+                showDialog({
+                    type: 'confirm',
+                    title: 'Update Available',
+                    message: (
+                        <div>
+                            <p>Version <b>{update.version}</b> is available.</p>
+                            <p style={{ margin: '15px 0', fontSize: '0.9em' }}>
+                                <a 
+                                    href={update.releaseUrl} 
+                                    target="_blank" 
+                                    rel="noreferrer" 
+                                    style={{ color: 'var(--ocr-accent)', textDecoration: 'underline' }}
+                                >
+                                    View Change Log (GitHub)
+                                </a>
+                            </p>
+                        </div>
+                    ),
+                    // Use @ts-ignore to bypass strict type check for custom props until types are updated
+                    // @ts-ignore 
+                    confirmText: 'Download',
+                    cancelText: 'Cancel',
+                    onConfirm: async () => {
+                        try {
+                            if (update.url && update.name) {
+                                await triggerAppUpdate(update.url, update.name);
+                                showAlert('Downloading', 'The update is downloading in the background.\nPlease check your notification tray.');
+                            }
+                        } catch (e) {
+                            showAlert('Error', 'Failed to start download.');
+                        }
+                    }
+                });
+            }
+        };
+        
+        check();
+    }, [showDialog, showAlert]); // Dependencies added
+
+    // URL Watcher (Reader Mode Toggle)
     useEffect(() => {
         const checkUrl = () => {
             const isReader = window.location.href.includes('/chapter/');
@@ -40,6 +96,7 @@ export const OCRManager = () => {
         };
     }, []);
 
+    // Resize Handler
     useEffect(() => {
         const handleResize = () => {
             setRefreshKey(prev => prev + 1);
@@ -54,6 +111,7 @@ export const OCRManager = () => {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // Load Puck Position
     useEffect(() => {
         if (!settings.mobileMode) return;
         const loadPos = () => {
@@ -104,7 +162,6 @@ export const OCRManager = () => {
             isDragging.current = false; 
             return;
         }
-        // 2. Close the dictionary popup
         setDictPopup(prev => ({ ...prev, visible: false }));
         setShowSettings(true);
     };
