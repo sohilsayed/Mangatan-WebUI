@@ -1,5 +1,6 @@
 import React from 'react';
-import { useOCR, OcrStatus } from '@/Mangatan/context/OCRContext'; // Import useOCR
+import { useOCR } from '@/Mangatan/context/OCRContext'; 
+import { OcrStatus } from '@/Mangatan/types'; // 修正: typesからインポート
 
 interface StatusIconProps {
     status: OcrStatus;
@@ -7,13 +8,9 @@ interface StatusIconProps {
 }
 
 export const StatusIcon: React.FC<StatusIconProps> = ({ status, onRetry }) => {
-    // 1. Get settings from context
     const { settings } = useOCR();
 
-    // 2. Check if the icon is disabled in settings
     if (settings.disableStatusIcon) return null;
-
-    // 3. Keep existing logic
     if (status === 'success' || status === 'idle') return null;
 
     return (

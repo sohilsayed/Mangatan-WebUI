@@ -18,7 +18,23 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [dictManagerKey, setDictManagerKey] = useState(0);
 
-    const handleChange = (key: keyof typeof settings, value: any) => {
+    const handleChange = async (key: keyof typeof settings, value: any) => {
+        // Trigger default installation if enabling Yomitan for the first time
+        if (key === 'enableYomitan' && value === true) {
+             try {
+                showProgress('Checking dictionary status...');
+                const res = await apiRequest<{status: string, message: string}>('/api/yomitan/install-defaults', { method: 'POST' });
+                
+                closeDialog();
+                
+                if (res.status === 'ok' && res.message.includes('Imported')) {
+                    showAlert('Dictionary Installed', 'The default dictionary has been installed successfully.');
+                }
+            } catch (e) {
+                console.error("Failed to install defaults", e);
+                closeDialog();
+            }
+        }
         setLocalSettings((prev) => ({ ...prev, [key]: value }));
     };
 
@@ -35,12 +51,11 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
             'This will reset all OCR settings to their default values.',
             () => {
                 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                const isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
                 
+                // Uses the updated DEFAULT_SETTINGS from types.ts which handles native detection
                 setLocalSettings({
                     ...DEFAULT_SETTINGS,
                     mobileMode: isMobile,
-                    enableYomitan: isiOS
                 });
                 closeDialog(); 
             }
@@ -126,12 +141,13 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         }
     };
 
+    // Check environment (Frontend)
+    const isNativeApp = typeof navigator !== 'undefined' && navigator.userAgent.includes('MangatanNative');
+
     return (
-        // 1. ADD onClick={onClose} to the background overlay
         <div className="ocr-modal-overlay" onClick={onClose}>
             <div 
                 className="ocr-modal"
-                // 2. STOP propagation so clicks inside the modal don't close it
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="ocr-modal-header">
@@ -140,7 +156,8 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                 <div className="ocr-modal-content">
                     <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".zip" onChange={handleFileChange} />
 
-                    {localSettings.enableYomitan && (
+                    {/* Show Manager if Native OR Enabled */}
+                    {(isNativeApp || localSettings.enableYomitan) && (
                         <DictionaryManager key={dictManagerKey} onImportClick={handleImportClick} />
                     )}
 
@@ -192,7 +209,12 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
 
                     <div className="checkboxes">
                         <label style={checkboxLabelStyle}><input type="checkbox" checked={localSettings.enableOverlay} onChange={(e) => handleChange('enableOverlay', e.target.checked)} style={checkboxInputStyle} />Enable Text Overlay</label>
-                        <label style={checkboxLabelStyle}><input type="checkbox" checked={localSettings.enableYomitan} onChange={e => handleChange('enableYomitan', e.target.checked)} style={checkboxInputStyle} />Enable Popup Dictionary</label>
+                        
+                        <label style={checkboxLabelStyle}>
+                            <input type="checkbox" checked={localSettings.enableYomitan} onChange={e => handleChange('enableYomitan', e.target.checked)} style={checkboxInputStyle} />
+                            Enable Popup Dictionary
+                        </label>
+
                         <label style={checkboxLabelStyle}><input type="checkbox" checked={localSettings.soloHoverMode} onChange={(e) => handleChange('soloHoverMode', e.target.checked)} style={checkboxInputStyle} />Solo Hover</label>
                         <label style={checkboxLabelStyle}><input type="checkbox" checked={localSettings.addSpaceOnMerge} onChange={(e) => handleChange('addSpaceOnMerge', e.target.checked)} style={checkboxInputStyle} />Add Space on Merge</label>
                         <label style={checkboxLabelStyle}><input type="checkbox" checked={localSettings.mobileMode} onChange={(e) => handleChange('mobileMode', e.target.checked)} style={checkboxInputStyle} />Mobile Mode</label>

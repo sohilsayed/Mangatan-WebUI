@@ -42,7 +42,6 @@ export interface Settings {
 
 export type MergeState = { imgSrc: string; index: number; } | null;
 
-// --- MISSING TYPE ADDED HERE ---
 export type OcrStatus = 'idle' | 'loading' | 'success' | 'error';
 
 // --- YOMITAN / DICTIONARY TYPES ---
@@ -81,6 +80,17 @@ export interface DialogState {
     onCancel?: () => void;
 }
 
+// --- ENVIRONMENT DETECTION ---
+const isBrowser = typeof navigator !== 'undefined';
+const ua = isBrowser ? navigator.userAgent : '';
+
+// 1. Check for the custom identifier injected by WebviewActivity.java
+const isAndroidNative = ua.includes('MangatanNative');
+// 2. Check for iOS/iPad devices
+const isIOS = /iPhone|iPad|iPod/i.test(ua);
+
+const ENABLE_YOMITAN_DEFAULT = isAndroidNative || isIOS;
+
 export const DEFAULT_SETTINGS: Settings = {
     interactionMode: 'hover',
     colorTheme: 'blue',
@@ -98,7 +108,7 @@ export const DEFAULT_SETTINGS: Settings = {
     enableOverlay: true,
     addSpaceOnMerge: false,
     disableStatusIcon: false,
-    enableYomitan: false,
+    enableYomitan: ENABLE_YOMITAN_DEFAULT,
     deleteModifierKey: 'Alt',
     mergeModifierKey: 'Control',
     site: {

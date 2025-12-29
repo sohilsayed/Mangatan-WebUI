@@ -1,4 +1,4 @@
-import React, { useRef, useState, useLayoutEffect } from 'react';
+import React, { useRef, useState, useLayoutEffect, useEffect } from 'react';
 import { OcrBlock } from '@/Mangatan/types';
 import { useOCR } from '@/Mangatan/context/OCRContext';
 import { cleanPunctuation, lookupYomitan } from '@/Mangatan/utils/api';
@@ -36,6 +36,7 @@ export const TextBox: React.FC<{
 }> = ({ block, index, imgSrc, containerRect, onUpdate, onMerge, onDelete }) => {
     const { settings, mergeAnchor, setMergeAnchor, setDictPopup } = useOCR();
     const [isEditing, setIsEditing] = useState(false);
+    const [isActive, setIsActive] = useState(false); 
     const [fontSize, setFontSize] = useState(16);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -45,6 +46,11 @@ export const TextBox: React.FC<{
         settings.textOrientation === 'forceVertical';
 
     const adj = settings.boundingBoxAdjustment || 0;
+
+    // --- COLORS ---
+    // Hardcoded solid colors to prevent transparency
+    const bgColor = settings.brightnessMode === 'dark' ? '#1a1d21' : '#ffffff';
+    const activeBgColor = settings.brightnessMode === 'dark' ? '#2d3436' : '#e3f2fd';
 
     useLayoutEffect(() => {
         if (!ref.current) return;
@@ -56,6 +62,43 @@ export const TextBox: React.FC<{
             setFontSize(calculateFontSize(displayTxt, pxW + adj, pxH + adj, isVertical, settings));
         }
     }, [block, containerRect, settings, isEditing, isVertical]);
+
+    let displayContent = isEditing ? block.text : cleanPunctuation(block.text);
+    displayContent = displayContent.replace(/\u200B/g, '\n');
+
+    // --- MOBILE DESELECTION & SAVE LOGIC ---
+    // 1. Listen for global clicks to deselect
+    useEffect(() => {
+        if (!isActive || !settings.mobileMode) return;
+
+        const handleGlobalClick = (e: MouseEvent | TouchEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                setIsActive(false);
+                setIsEditing(false); // Stop editing if they click away
+            }
+        };
+
+        // If Yomitan popup backdrop stops propagation, this won't fire. PERFECT.
+        document.addEventListener('touchstart', handleGlobalClick);
+        document.addEventListener('mousedown', handleGlobalClick);
+        return () => {
+            document.removeEventListener('touchstart', handleGlobalClick);
+            document.removeEventListener('mousedown', handleGlobalClick);
+        };
+    }, [isActive, settings.mobileMode]);
+
+    // 2. When deselected, trigger update/save (since we skip onBlur)
+    useEffect(() => {
+        if (!isActive && !isEditing && settings.mobileMode) {
+             const raw = ref.current?.innerText || '';
+             // Use a ref check or compare to ensure we don't save unchanged data needlessly, 
+             // but block.text is from props, so comparison is safe.
+             // Note: displayContent has punctuation cleaned, so we check raw against clean version
+             if (raw !== displayContent) {
+                 onUpdate(index, raw.replace(/\n/g, '\u200B'));
+             }
+        }
+    }, [isActive, isEditing, settings.mobileMode, index, onUpdate, displayContent]);
 
     // --- HELPER: Find Scroll Container ---
     const findScrollContainerFromImage = (src: string): HTMLElement | null => {
@@ -90,6 +133,7 @@ export const TextBox: React.FC<{
 
         if (isEditing) return;
         e.stopPropagation();
+        if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
 
         const isDelete = settings.deleteModifierKey === 'Alt' ? e.altKey : e.ctrlKey;
         const isMerge = settings.mergeModifierKey === 'Control' ? e.ctrlKey : e.altKey;
@@ -105,13 +149,18 @@ export const TextBox: React.FC<{
                 setMergeAnchor(null);
             }
         } else {
+            // Mobile Logic
+            if (settings.mobileMode && !isActive) {
+                e.preventDefault(); 
+                setIsActive(true);
+                if (ref.current) ref.current.focus();
+                return;
+            }
+
             if (!settings.enableYomitan) return;
 
-            // 1. Get Initial Char Offset (Browser Logic)
             let charOffset = 0;
             let range: Range | null = null;
-
-            // Try standard API
             if (document.caretRangeFromPoint) {
                 range = document.caretRangeFromPoint(e.clientX, e.clientY);
                 if (range) charOffset = range.startOffset;
@@ -120,41 +169,25 @@ export const TextBox: React.FC<{
                 if (pos) charOffset = pos.offset;
             }
 
-            // 2. CORRECTION LOGIC: Fix "Bottom Half" Clicks
-            // If the browser says we are at index N, we check if the click was physically inside character N-1.
-            // If so, we assume the user meant character N-1.
             if (range && range.startContainer.nodeType === Node.TEXT_NODE && charOffset > 0) {
                 try {
                     const testRange = document.createRange();
-                    // Select character BEFORE the cursor
                     testRange.setStart(range.startContainer, charOffset - 1);
                     testRange.setEnd(range.startContainer, charOffset);
-                    
                     const rects = testRange.getClientRects();
-                    // Check all rects (in case of wrapping, though unlikely for single char)
                     for (let i = 0; i < rects.length; i++) {
                         const rect = rects[i];
-                        // Check if click point is inside this character's box
-                        if (
-                            e.clientX >= rect.left && 
-                            e.clientX <= rect.right && 
-                            e.clientY >= rect.top && 
-                            e.clientY <= rect.bottom
-                        ) {
-                            // User clicked this character! Shift offset back to point at it.
+                        if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
                             charOffset -= 1;
                             break;
                         }
                     }
-                } catch (err) {
-                    // Fallback to default behavior if range manip fails
-                }
+                } catch (err) {}
             }
 
             let content = cleanPunctuation(block.text);
             content = content.replace(/\u200B/g, '\n');
 
-            // 3. Calculate Byte Offset for Rust
             const encoder = new TextEncoder();
             const prefix = content.substring(0, charOffset);
             const byteIndex = encoder.encode(prefix).length;
@@ -168,23 +201,12 @@ export const TextBox: React.FC<{
                 systemLoading: false
             });
 
-            // 4. Send Corrected Index
             const results = await lookupYomitan(content, byteIndex);
 
             if (results === 'loading') {
-                 setDictPopup(prev => ({
-                    ...prev,
-                    results: [],
-                    isLoading: false,
-                    systemLoading: true
-                }));
+                 setDictPopup(prev => ({ ...prev, results: [], isLoading: false, systemLoading: true }));
             } else {
-                setDictPopup(prev => ({
-                    ...prev,
-                    results: results,
-                    isLoading: false,
-                    systemLoading: false
-                }));
+                setDictPopup(prev => ({ ...prev, results: results, isLoading: false, systemLoading: false }));
             }
         }
     };
@@ -202,8 +224,14 @@ export const TextBox: React.FC<{
     };
 
     const isMergedTarget = mergeAnchor?.imgSrc === imgSrc && mergeAnchor?.index === index;
-    let displayContent = isEditing ? block.text : cleanPunctuation(block.text);
-    displayContent = displayContent.replace(/\u200B/g, '\n');
+
+    const classes = [
+        'gemini-ocr-text-box',
+        isVertical ? 'vertical' : '',
+        isEditing ? 'editing' : '',
+        isMergedTarget ? 'merge-target' : '',
+        isActive ? 'mobile-active' : ''
+    ].filter(Boolean).join(' ');
 
     return (
         <div
@@ -212,12 +240,17 @@ export const TextBox: React.FC<{
             tabIndex={0}
             onKeyDown={handleKeyDown}
             onWheel={handleWheel} 
-            className={`gemini-ocr-text-box ${isVertical ? 'vertical' : ''} ${isEditing ? 'editing' : ''} ${isMergedTarget ? 'merge-target' : ''}`}
+            className={classes}
             contentEditable={isEditing}
             suppressContentEditableWarning
             onDoubleClick={() => setIsEditing(true)}
             onBlur={() => {
+                // IMPORTANT: If mobile mode, ignore standard Blur. 
+                // We handle deselection via the global click listener.
+                if (settings.mobileMode) return;
+                
                 setIsEditing(false);
+                setIsActive(false); 
                 const raw = ref.current?.innerText || '';
                 if (raw !== displayContent) onUpdate(index, raw.replace(/\n/g, '\u200B'));
             }}
@@ -233,6 +266,8 @@ export const TextBox: React.FC<{
                 whiteSpace: 'pre',
                 overflow: isEditing ? 'auto' : 'hidden', 
                 touchAction: 'pan-y', 
+                backgroundColor: isActive ? activeBgColor : bgColor,
+                outline: isActive ? '2px solid var(--ocr-accent, #4890ff)' : 'none',
             }}
         >
             {displayContent}

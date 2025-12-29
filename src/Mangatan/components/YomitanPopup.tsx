@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { useOCR } from '@/Mangatan/context/OCRContext';
 import { DictionaryResult } from '@/Mangatan/types';
 
-// --- HELPER COMPONENT: Structured Content Renderer ---
 const StructuredContent: React.FC<{ contentString: string }> = ({ contentString }) => {
     const parsedData = useMemo(() => {
         if (!contentString) return null;
@@ -15,7 +14,6 @@ const StructuredContent: React.FC<{ contentString: string }> = ({ contentString 
     }, [contentString]);
 
     if (parsedData === null || parsedData === undefined) return null;
-
     return <ContentNode node={parsedData} />;
 };
 
@@ -47,13 +45,19 @@ const ContentNode: React.FC<{ node: any }> = ({ node }) => {
     }
 };
 
-// --- MAIN POPUP COMPONENT ---
+// 修正: tagStyleを外に出してスコープを確保
+const tagStyle: React.CSSProperties = {
+    display: 'inline-block', padding: '1px 5px', borderRadius: '3px',
+    fontSize: '0.75em', fontWeight: 'bold', marginRight: '6px',
+    color: '#fff', verticalAlign: 'middle', lineHeight: '1.2'
+};
+
 export const YomitanPopup = () => {
     const { dictPopup, setDictPopup } = useOCR();
     const popupRef = useRef<HTMLDivElement>(null);
+    const backdropRef = useRef<HTMLDivElement>(null);
     const [posStyle, setPosStyle] = useState<React.CSSProperties>({});
 
-    // Positioning Logic
     useLayoutEffect(() => {
         if (!dictPopup.visible) return;
         const viewportW = window.visualViewport?.width || window.innerWidth;
@@ -69,16 +73,35 @@ export const YomitanPopup = () => {
         setPosStyle({ top: finalTop, left: Math.max(10, finalLeft), maxHeight: `${MAX_HEIGHT}px` });
     }, [dictPopup.visible, dictPopup.x, dictPopup.y]);
 
-    // --- BACKDROP HANDLER ---
-    const handleBackdropInteract = (e: React.MouseEvent | React.TouchEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDictPopup(prev => ({ ...prev, visible: false }));
-    };
+    useLayoutEffect(() => {
+        const el = backdropRef.current;
+        if (!el || !dictPopup.visible) return;
+
+        const killEvent = (e: Event) => {
+            if (e.cancelable) e.preventDefault(); 
+            e.stopPropagation();           
+            e.stopImmediatePropagation();  
+            
+            setDictPopup(prev => ({ ...prev, visible: false }));
+        };
+
+        const opts = { passive: false };
+
+        el.addEventListener('touchstart', killEvent, opts);
+        el.addEventListener('mousedown', killEvent, opts);
+        el.addEventListener('click', killEvent, opts);
+        el.addEventListener('contextmenu', killEvent, opts);
+
+        return () => {
+            el.removeEventListener('touchstart', killEvent, opts as any);
+            el.removeEventListener('mousedown', killEvent, opts as any);
+            el.removeEventListener('click', killEvent, opts as any);
+            el.removeEventListener('contextmenu', killEvent, opts as any);
+        };
+    }, [dictPopup.visible, setDictPopup]);
 
     if (!dictPopup.visible) return null;
 
-    // --- STYLES ---
     const popupStyle: React.CSSProperties = {
         position: 'fixed', zIndex: 2147483647, width: '340px', overflowY: 'auto',
         backgroundColor: '#1a1d21', color: '#eee', border: '1px solid #444',
@@ -87,38 +110,32 @@ export const YomitanPopup = () => {
         ...posStyle
     };
 
-    const tagStyle: React.CSSProperties = {
-        display: 'inline-block', padding: '1px 5px', borderRadius: '3px',
-        fontSize: '0.75em', fontWeight: 'bold', marginRight: '6px',
-        color: '#fff', verticalAlign: 'middle', lineHeight: '1.2'
-    };
-
     return createPortal(
         <>
-            {/* 1. TRANSPARENT BACKDROP */}
             <div 
+                ref={backdropRef}
                 style={{
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    // FIX: Set to 99998. This is BELOW the TextBox container (99999) 
-                    // so you can still click text, but ABOVE the reader (usually 0-1000).
                     zIndex: 99998, 
                     cursor: 'default',
                     outline: 'none',
                     backgroundColor: 'transparent',
+                    touchAction: 'none',
                 }}
-                onClick={handleBackdropInteract}
-                onContextMenu={handleBackdropInteract}
-                onMouseDown={handleBackdropInteract}
-                onTouchStart={handleBackdropInteract}
             />
 
-            {/* 2. THE POPUP */}
-            <div ref={popupRef} style={popupStyle} onWheel={(e) => e.stopPropagation()}>
+            <div 
+                ref={popupRef} 
+                style={popupStyle} 
+                onMouseDown={e => e.stopPropagation()}
+                onTouchStart={e => e.stopPropagation()}
+                onClick={e => e.stopPropagation()}
+                onWheel={e => e.stopPropagation()} 
+            >
                 {dictPopup.isLoading && <div style={{ textAlign: 'center', padding: '20px', color: '#aaa' }}>Scanning...</div>}
 
                 {!dictPopup.isLoading && dictPopup.results.map((entry, i) => (
                     <div key={i} style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: i < dictPopup.results.length - 1 ? '1px solid #333' : 'none' }}>
-                        
                         <div style={{ fontSize: '1.8em', marginBottom: '8px', lineHeight: '1' }}>
                             {entry.furigana && entry.furigana.length > 0 ? (
                                 <ruby style={{ rubyPosition: 'over' }}>
@@ -135,7 +152,6 @@ export const YomitanPopup = () => {
                                 </ruby>
                             )}
                         </div>
-
                         {entry.definitions && (
                             <div>
                                 {entry.definitions.map((def, defIdx) => (
