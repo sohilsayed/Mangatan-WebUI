@@ -1,4 +1,4 @@
-export interface Rect { x: number; y: number; width: number; height: number; }
+export interface Rect { x: number; y: number; width: number; height: number; rotation?: number; }
 
 export interface OcrBlock {
     text: string;

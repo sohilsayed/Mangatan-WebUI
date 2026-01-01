@@ -28,12 +28,17 @@ export const ImageOverlay: React.FC<{ img: HTMLImageElement }> = ({ img }) => {
         try {
             setOcrStatus(img.src, 'loading');
             
+            // --- UPDATED URL CONSTRUCTION ---
             let url = `/api/ocr/ocr?url=${encodeURIComponent(img.src)}`;
+            
+            // Pass the setting to the backend
+            url += `&add_space_on_merge=${settings.addSpaceOnMerge}`;
 
             if (serverSettings?.authUsername?.trim() && serverSettings?.authPassword?.trim()) {
                 url += `&user=${encodeURIComponent(serverSettings.authUsername.trim())}`;
                 url += `&pass=${encodeURIComponent(serverSettings.authPassword.trim())}`;
             }
+            // --------------------------------
 
             const result = await apiRequest<OcrBlock[]>(url);
 
@@ -47,8 +52,8 @@ export const ImageOverlay: React.FC<{ img: HTMLImageElement }> = ({ img }) => {
             console.error("OCR Failed:", err);
             setOcrStatus(img.src, 'error');
         }
-    }, [img.src, ocrCache, setOcrStatus, updateOcrData, serverSettings]);
-
+    }, [img.src, ocrCache, setOcrStatus, updateOcrData, serverSettings, settings.addSpaceOnMerge]); // Add dependency
+    
     useEffect(() => {
         if (!img.src) return;
         if (ocrCache.has(img.src)) {

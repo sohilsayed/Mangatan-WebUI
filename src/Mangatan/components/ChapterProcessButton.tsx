@@ -4,9 +4,10 @@ import { checkChapterStatus, preprocessChapter, ChapterStatus, AuthCredentials }
 interface ChapterProcessButtonProps {
     chapterPath: string; 
     creds?: AuthCredentials;
+    addSpaceOnMerge?: boolean;
 }
 
-export const ChapterProcessButton: React.FC<ChapterProcessButtonProps> = ({ chapterPath, creds }) => {
+export const ChapterProcessButton: React.FC<ChapterProcessButtonProps> = ({ chapterPath, creds, addSpaceOnMerge }) => {
     const [status, setStatus] = useState<ChapterStatus>({ status: 'idle', cached: 0, total: 0 });
     const apiBaseUrl = `${window.location.origin}/api/v1${chapterPath}/page/`;
     const startingRef = useRef(false);
@@ -79,7 +80,7 @@ export const ChapterProcessButton: React.FC<ChapterProcessButtonProps> = ({ chap
         setStatus({ status: 'processing', progress: 0, total: 0 }); 
         
         try {
-            await preprocessChapter(apiBaseUrl, chapterPath, creds);
+            await preprocessChapter(apiBaseUrl, chapterPath, creds, addSpaceOnMerge);
             
             setTimeout(() => {
                 startingRef.current = false;

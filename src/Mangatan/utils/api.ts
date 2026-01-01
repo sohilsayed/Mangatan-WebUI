@@ -198,7 +198,7 @@ export const checkChapterStatus = async (baseUrl: string, creds?: AuthCredential
     }
 };
 
-export const preprocessChapter = async (baseUrl: string, chapterPath: string, creds?: AuthCredentials): Promise<void> => {
+export const preprocessChapter = async (baseUrl: string, chapterPath: string, creds?: AuthCredentials, addSpaceOnMerge?: boolean): Promise<void> => {
     const mangaMatch = chapterPath.match(/\/manga\/(\d+)/);
     const chapterMatch = chapterPath.match(/\/chapter\/([\d.]+)/);
 
@@ -223,7 +223,8 @@ export const preprocessChapter = async (baseUrl: string, chapterPath: string, cr
     const body: any = { 
         base_url: baseUrl, 
         context: document.title, 
-        pages: absolutePages 
+        pages: absolutePages,
+        add_space_on_merge: addSpaceOnMerge
     };
     if (creds?.user) body.user = creds.user;
     if (creds?.pass) body.pass = creds.pass;

@@ -5,7 +5,7 @@ import { useOCR } from '@/Mangatan/context/OCRContext';
 import { AuthCredentials } from '@/Mangatan/utils/api';
 
 export const ChapterListInjector: React.FC = () => {
-    const { serverSettings } = useOCR();
+    const { serverSettings, settings } = useOCR();
     
     const credsRef = useRef<AuthCredentials | undefined>(undefined);
 
@@ -78,6 +78,7 @@ export const ChapterListInjector: React.FC = () => {
             <ChapterProcessButton 
                 chapterPath={urlPath} 
                 creds={credsRef.current} 
+                addSpaceOnMerge={settings.addSpaceOnMerge}
             />
         );
     };

@@ -12,6 +12,9 @@ const calculateFontSize = (text: string, w: number, h: number, isVertical: boole
     const safeH = h * 0.85;
 
     if (isVertical) {
+        // In vertical text:
+        // Width dictates how many columns (lines) fit
+        // Height dictates how long a column can be
         const maxFontSizeByWidth = safeW / lineCount;
         const maxFontSizeByHeight = safeH / maxLineLength;
         size = Math.min(maxFontSizeByWidth, maxFontSizeByHeight);
@@ -47,8 +50,6 @@ export const TextBox: React.FC<{
 
     const adj = settings.boundingBoxAdjustment || 0;
 
-    // --- COLORS ---
-    // Hardcoded solid colors to prevent transparency
     const bgColor = settings.brightnessMode === 'dark' ? '#1a1d21' : '#ffffff';
     const activeBgColor = settings.brightnessMode === 'dark' ? '#2d3436' : '#e3f2fd';
 
@@ -58,6 +59,7 @@ export const TextBox: React.FC<{
         const pxH = block.tightBoundingBox.height * containerRect.height;
 
         if (!isEditing) {
+            // Respect newlines added by the backend
             const displayTxt = cleanPunctuation(block.text, settings.addSpaceOnMerge).replace(/\u200B/g, '\n');
             setFontSize(calculateFontSize(displayTxt, pxW + adj, pxH + adj, isVertical, settings));
         }
@@ -66,19 +68,14 @@ export const TextBox: React.FC<{
     let displayContent = isEditing ? block.text : cleanPunctuation(block.text, settings.addSpaceOnMerge);
     displayContent = displayContent.replace(/\u200B/g, '\n');
 
-    // --- MOBILE DESELECTION & SAVE LOGIC ---
-    // 1. Listen for global clicks to deselect
     useEffect(() => {
         if (!isActive || !settings.mobileMode) return;
-
         const handleGlobalClick = (e: MouseEvent | TouchEvent) => {
             if (ref.current && !ref.current.contains(e.target as Node)) {
                 setIsActive(false);
-                setIsEditing(false); // Stop editing if they click away
+                setIsEditing(false);
             }
         };
-
-        // If Yomitan popup backdrop stops propagation, this won't fire. PERFECT.
         document.addEventListener('touchstart', handleGlobalClick);
         document.addEventListener('mousedown', handleGlobalClick);
         return () => {
@@ -87,45 +84,14 @@ export const TextBox: React.FC<{
         };
     }, [isActive, settings.mobileMode]);
 
-    // 2. When deselected, trigger update/save (since we skip onBlur)
     useEffect(() => {
         if (!isActive && !isEditing && settings.mobileMode) {
              const raw = ref.current?.innerText || '';
-             // Use a ref check or compare to ensure we don't save unchanged data needlessly, 
-             // but block.text is from props, so comparison is safe.
-             // Note: displayContent has punctuation cleaned, so we check raw against clean version
              if (raw !== displayContent) {
                  onUpdate(index, raw.replace(/\n/g, '\u200B'));
              }
         }
     }, [isActive, isEditing, settings.mobileMode, index, onUpdate, displayContent]);
-
-    // --- HELPER: Find Scroll Container ---
-    const findScrollContainerFromImage = (src: string): HTMLElement | null => {
-        const img = document.querySelector(`img[src="${src}"]`);
-        if (!img) return null;
-        let parent = img.parentElement;
-        while (parent && parent !== document.body) {
-            const style = window.getComputedStyle(parent);
-            const canScrollY = (style.overflowY === 'auto' || style.overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight;
-            const canScrollX = (style.overflowX === 'auto' || style.overflowX === 'scroll') && parent.scrollWidth > parent.clientWidth;
-            if (canScrollY || canScrollX) return parent;
-            parent = parent.parentElement;
-        }
-        return null;
-    };
-
-    const handleWheel = (e: React.WheelEvent) => {
-        if (isEditing) return;
-        const containerFromImg = findScrollContainerFromImage(imgSrc);
-        if (containerFromImg) {
-            if (containerFromImg.scrollWidth > containerFromImg.clientWidth) {
-                containerFromImg.scrollLeft += e.deltaY;
-            } else {
-                containerFromImg.scrollTop += e.deltaY;
-            }
-        }
-    };
 
     const handleInteract = async (e: React.MouseEvent) => {
         const selection = window.getSelection();
@@ -149,7 +115,6 @@ export const TextBox: React.FC<{
                 setMergeAnchor(null);
             }
         } else {
-            // Mobile Logic
             if (settings.mobileMode && !isActive) {
                 e.preventDefault(); 
                 setIsActive(true);
@@ -239,16 +204,12 @@ export const TextBox: React.FC<{
             role="button"
             tabIndex={0}
             onKeyDown={handleKeyDown}
-            onWheel={handleWheel} 
             className={classes}
             contentEditable={isEditing}
             suppressContentEditableWarning
             onDoubleClick={() => setIsEditing(true)}
             onBlur={() => {
-                // IMPORTANT: If mobile mode, ignore standard Blur. 
-                // We handle deselection via the global click listener.
                 if (settings.mobileMode) return;
-                
                 setIsEditing(false);
                 setIsActive(false); 
                 const raw = ref.current?.innerText || '';
@@ -263,11 +224,14 @@ export const TextBox: React.FC<{
                 fontSize: `${fontSize}px`,
                 color: settings.focusFontColor === 'difference' ? 'white' : 'var(--ocr-text-color)',
                 mixBlendMode: settings.focusFontColor === 'difference' ? 'difference' : 'normal',
-                whiteSpace: 'pre',
+                // This is critical for properly displaying the backend's newlines
+                whiteSpace: 'pre', 
                 overflow: isEditing ? 'auto' : 'hidden', 
                 touchAction: 'pan-y', 
                 backgroundColor: isActive ? activeBgColor : bgColor,
                 outline: isActive ? '2px solid var(--ocr-accent, #4890ff)' : 'none',
+                // Increased line-height for vertical text to prevent columns from touching
+                lineHeight: isVertical ? '1.5' : '1.1',
             }}
         >
             {displayContent}
