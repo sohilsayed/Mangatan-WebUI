@@ -37,7 +37,7 @@ export const TextBox: React.FC<{
     onMerge: (src: number, target: number) => void;
     onDelete: (idx: number) => void;
 }> = ({ block, index, imgSrc, containerRect, onUpdate, onMerge, onDelete }) => {
-    const { settings, mergeAnchor, setMergeAnchor, setDictPopup } = useOCR();
+    const { settings, mergeAnchor, setMergeAnchor, setDictPopup, dictPopup } = useOCR();
     const [isEditing, setIsEditing] = useState(false);
     const [isActive, setIsActive] = useState(false); 
     const [fontSize, setFontSize] = useState(16);
@@ -68,6 +68,39 @@ export const TextBox: React.FC<{
     let displayContent = isEditing ? block.text : cleanPunctuation(block.text, settings.addSpaceOnMerge);
     displayContent = displayContent.replace(/\u200B/g, '\n');
 
+    // --- NEW: NATIVE SELECTION HANDLER ---
+    // Instead of rendering a span, we use the browser's native selection API
+    // to highlight the text. This prevents ALL layout shifts.
+    useLayoutEffect(() => {
+        // Only run if the popup is visible and the highlight belongs to this block
+        const highlight = dictPopup.visible ? dictPopup.highlight : undefined;
+        
+        // Clear selection if popup closes or highlight moves elsewhere
+        if (!highlight || highlight.imgSrc !== imgSrc || highlight.index !== index) {
+            return;
+        }
+
+        const selection = window.getSelection();
+        const node = ref.current?.firstChild;
+
+        if (selection && node && node.nodeType === Node.TEXT_NODE) {
+            try {
+                const range = document.createRange();
+                // Ensure we don't go out of bounds
+                const start = Math.max(0, Math.min(highlight.startChar, node.textContent?.length || 0));
+                const end = Math.max(0, Math.min(start + highlight.length, node.textContent?.length || 0));
+                
+                range.setStart(node, start);
+                range.setEnd(node, end);
+                
+                selection.removeAllRanges();
+                selection.addRange(range);
+            } catch (e) {
+                // Silently fail if ranges are invalid (e.g. text changed rapidly)
+            }
+        }
+    }, [dictPopup.visible, dictPopup.highlight, imgSrc, index, displayContent]);
+
     useEffect(() => {
         if (!isActive || !settings.mobileMode) return;
         const handleGlobalClick = (e: MouseEvent | TouchEvent) => {
@@ -95,7 +128,8 @@ export const TextBox: React.FC<{
 
     const handleInteract = async (e: React.MouseEvent) => {
         const selection = window.getSelection();
-        if (selection && !selection.isCollapsed) return;
+        // Allow user to manually select text if they are dragging
+        if (selection && !selection.isCollapsed && !dictPopup.visible) return;
 
         if (isEditing) return;
         e.stopPropagation();
@@ -124,8 +158,11 @@ export const TextBox: React.FC<{
 
             if (!settings.enableYomitan) return;
 
+            // --- YOMITAN LOOKUP ---
             let charOffset = 0;
             let range: Range | null = null;
+            
+            // Use Caret Position to find exactly where the user clicked
             if (document.caretRangeFromPoint) {
                 range = document.caretRangeFromPoint(e.clientX, e.clientY);
                 if (range) charOffset = range.startOffset;
@@ -134,6 +171,7 @@ export const TextBox: React.FC<{
                 if (pos) charOffset = pos.offset;
             }
 
+            // Adjust offset for rect-based precision if available
             if (range && range.startContainer.nodeType === Node.TEXT_NODE && charOffset > 0) {
                 try {
                     const testRange = document.createRange();
@@ -163,7 +201,8 @@ export const TextBox: React.FC<{
                 y: e.clientY,
                 results: [],
                 isLoading: true,
-                systemLoading: false
+                systemLoading: false,
+                highlight: undefined 
             });
 
             const results = await lookupYomitan(content, byteIndex);
@@ -171,7 +210,21 @@ export const TextBox: React.FC<{
             if (results === 'loading') {
                  setDictPopup(prev => ({ ...prev, results: [], isLoading: false, systemLoading: true }));
             } else {
-                setDictPopup(prev => ({ ...prev, results: results, isLoading: false, systemLoading: false }));
+                const matchLen = (results && results.length > 0 && results[0].matchLen) ? results[0].matchLen : 1;
+                
+                setDictPopup(prev => ({ 
+                    ...prev, 
+                    results: results, 
+                    isLoading: false, 
+                    systemLoading: false,
+                    // The useEffect above will detect this change and apply the Native Selection
+                    highlight: {
+                        imgSrc,
+                        index,
+                        startChar: charOffset,
+                        length: matchLen
+                    }
+                }));
             }
         }
     };
@@ -219,7 +272,6 @@ export const TextBox: React.FC<{
             style={{
                 left: `calc(${block.tightBoundingBox.x * 100}% - ${adj / 2}px)`,
                 top: `calc(${block.tightBoundingBox.y * 100}% - ${adj / 2}px)`,
-                // MODIFIED: Use min-width/min-height with fit-content to allow box to expand for text
                 minWidth: `calc(${block.tightBoundingBox.width * 100}% + ${adj}px)`,
                 minHeight: `calc(${block.tightBoundingBox.height * 100}% + ${adj}px)`,
                 width: 'fit-content',
@@ -228,7 +280,6 @@ export const TextBox: React.FC<{
                 color: settings.focusFontColor === 'difference' ? 'white' : 'var(--ocr-text-color)',
                 mixBlendMode: settings.focusFontColor === 'difference' ? 'difference' : 'normal',
                 whiteSpace: 'pre',
-                // MODIFIED: Visible overflow so text never gets clipped even if it's slightly larger than the OCR box
                 overflow: isEditing ? 'auto' : 'visible', 
                 touchAction: 'pan-y', 
                 backgroundColor: isActive ? activeBgColor : bgColor,
@@ -236,6 +287,10 @@ export const TextBox: React.FC<{
                 lineHeight: isVertical ? '1.5' : '1.1',
             }}
         >
+            {/* CRITICAL FIX: 
+               Always render plain content. No more <span> insertion for highlighting.
+               This prevents the "Flexbox layout shift" completely.
+            */}
             {displayContent}
         </div>
     );
