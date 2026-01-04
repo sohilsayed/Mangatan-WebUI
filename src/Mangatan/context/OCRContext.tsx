@@ -51,7 +51,15 @@ export const OCRProvider = ({ children }: { children: ReactNode }) => {
         
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-        return { ...DEFAULT_SETTINGS, mobileMode: isMobile, enableYomitan: isiOS };
+        // FIX: Check for Native Android User Agent
+        const isNative = navigator.userAgent.includes('MangatanNative');
+        
+        return { 
+            ...DEFAULT_SETTINGS, 
+            mobileMode: isMobile, 
+            // Enable Yomitan for iOS OR Native Android App
+            enableYomitan: isiOS || isNative 
+        };
     });
 
     const [ocrCache, setOcrCache] = useState<Map<string, OcrBlock[]>>(new Map());
