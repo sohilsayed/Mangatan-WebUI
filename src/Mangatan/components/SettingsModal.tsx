@@ -31,7 +31,8 @@ const statusDotStyle = (connected: boolean): React.CSSProperties => ({
     boxShadow: connected ? '0 0 5px #2ecc71' : 'none'
 });
 
-const MAPPING_OPTIONS = ['None', 'Sentence', 'Image', 'Furigana', 'Target Word', 'Definition'];
+// Updated Mapping Options to distinguish between Furigana (brackets) and Reading (kana only)
+const MAPPING_OPTIONS = ['None', 'Target Word', 'Furigana', 'Reading', 'Definition', 'Sentence', 'Image'];
 
 export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { settings, setSettings, showConfirm, showAlert, showProgress, closeDialog, showDialog } = useOCR();
@@ -83,7 +84,7 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         if (localSettings.ankiConnectEnabled) {
             fetchAnkiData();
         }
-    }, [localSettings.ankiConnectEnabled]); // Run on enable
+    }, [localSettings.ankiConnectEnabled]); 
 
     // Fetch fields when model changes or when connection is established with a pre-selected model
     useEffect(() => {
@@ -185,6 +186,16 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     const handleFieldMapChange = (ankiField: string, mapValue: string) => {
         const currentMap = (localSettings.ankiFieldMap as Record<string, string>) || {};
         const newMap = { ...currentMap, [ankiField]: mapValue };
+
+        // Ensure "Target Word" is unique
+        if (mapValue === 'Target Word') {
+            Object.keys(newMap).forEach(key => {
+                if (key !== ankiField && newMap[key] === 'Target Word') {
+                    newMap[key] = 'None';
+                }
+            });
+        }
+
         handleChange('ankiFieldMap', newMap);
     };
 
@@ -357,7 +368,7 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
 
                             {/* Collapsible Anki Settings */}
                             <div style={{
-                                maxHeight: localSettings.ankiConnectEnabled ? '1200px' : '0px',
+                                maxHeight: localSettings.ankiConnectEnabled ? 'none' : '0px',
                                 opacity: localSettings.ankiConnectEnabled ? 1 : 0,
                                 overflow: 'hidden',
                                 transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-in-out',
@@ -422,6 +433,23 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                         </label>
                                     </div>
 
+                                    <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                        <label style={{ ...checkboxLabelStyle, marginBottom: '0' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={localSettings.ankiCheckDuplicates ?? true} 
+                                                onChange={(e) => handleChange('ankiCheckDuplicates', e.target.checked)} 
+                                                style={checkboxInputStyle} 
+                                            />
+                                            <div>
+                                                Check for Duplicates
+                                                <div style={{ opacity: 0.5, fontSize: '0.9em' }}>
+                                                    Checks if the word already exists in the selected deck
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+
                                     {/* Deck & Model Selection */}
                                     {ankiStatus === 'connected' && (
                                         <>
@@ -440,7 +468,15 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                                 <select 
                                                     id="ankiModel"
                                                     value={localSettings.ankiModel || ''}
-                                                    onChange={e => handleChange('ankiModel', e.target.value)}
+                                                    onChange={e => {
+                                                        // Clear mapping when model changes to avoid stale keys
+                                                        const newVal = e.target.value;
+                                                        setLocalSettings(prev => ({
+                                                            ...prev, 
+                                                            ankiModel: newVal,
+                                                            ankiFieldMap: {} 
+                                                        }));
+                                                    }}
                                                 >
                                                     <option value="">Select Card Type...</option>
                                                     {ankiModels.map(m => <option key={m} value={m}>{m}</option>)}
