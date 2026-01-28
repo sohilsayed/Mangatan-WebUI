@@ -64,6 +64,25 @@ export const MobileBottomBar = ({ navBarItems }: { navBarItems: NavbarItem[] }) 
                     setSelectedNavBarItem(newValue);
                     navigate(newValue);
                 }}
+                sx={{
+                    px: 0.5,
+                    '.MuiBottomNavigationAction-root': {
+                        minWidth: 0,
+                        flex: 1,
+                        px: 0.5,
+                    },
+                    '.MuiBottomNavigationAction-label': {
+                        fontSize: '0.7rem',
+                        lineHeight: 1.1,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        maxWidth: '100%',
+                    },
+                    '.MuiBottomNavigationAction-label.Mui-selected': {
+                        fontSize: '0.7rem',
+                    },
+                }}
             >
                 {navBarItems.map(({ path, title, IconComponent, SelectedIconComponent, useBadge }) => (
                     <BottomNavigationAction
@@ -74,6 +93,7 @@ export const MobileBottomBar = ({ navBarItems }: { navBarItems: NavbarItem[] }) 
                                 {selectedNavBarItem === path ? <SelectedIconComponent /> : <IconComponent />}
                             </Badge>
                         }
+                        sx={{ minWidth: 0 }}
                     />
                 ))}
             </BottomNavigation>
