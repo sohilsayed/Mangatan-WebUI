@@ -12,39 +12,36 @@ import {
     Stack,
     MenuItem,
     ListItemIcon,
+    Checkbox,
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DeleteIcon from '@mui/icons-material/Delete';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { styled } from '@mui/material/styles';
-import { AppStorage } from '@/lib/storage/AppStorage';
+
+import { AppStorage, LNMetadata } from '@/lib/storage/AppStorage';
 import { AppRoutes } from '@/base/AppRoute.constants';
-import JSZip from 'jszip';
+import { parseEpub, ParseProgress } from '../services/epubParser';
+import { clearBookCache } from '../reader/hooks/useBookContent';
+
 import PopupState, { bindMenu, bindTrigger } from 'material-ui-popup-state';
 import { useLongPress } from 'use-long-press';
-import { Menu } from '@/base/components/menu/Menu.tsx';
-import { MUIUtil } from '@/lib/mui/MUI.util.ts';
-import { MediaQuery } from '@/base/utils/MediaQuery.tsx';
-import { CustomTooltip } from '@/base/components/CustomTooltip.tsx';
-import { TypographyMaxLines } from '@/base/components/texts/TypographyMaxLines.tsx';
-import { MANGA_COVER_ASPECT_RATIO } from '@/features/manga/Manga.constants.ts';
-import { useAppAction } from '@/features/navigation-bar/hooks/useAppAction.ts';
-import { useAppTitle } from '@/features/navigation-bar/hooks/useAppTitle.ts';
-import { useMetadataServerSettings } from '@/features/settings/services/ServerSettingsMetadata.ts';
-import { useResizeObserver } from '@/base/hooks/useResizeObserver.tsx';
-import { useNavBarContext } from '@/features/navigation-bar/NavbarContext.tsx';
-import { resolvePath } from '../reader/utils/pathUtils';
+import { Menu } from '@/base/components/menu/Menu';
+import { MUIUtil } from '@/lib/mui/MUI.util';
+import { MediaQuery } from '@/base/utils/MediaQuery';
+import { CustomTooltip } from '@/base/components/CustomTooltip';
+import { TypographyMaxLines } from '@/base/components/texts/TypographyMaxLines';
+import { MANGA_COVER_ASPECT_RATIO } from '@/features/manga/Manga.constants';
+import { useAppAction } from '@/features/navigation-bar/hooks/useAppAction';
+import { useAppTitle } from '@/features/navigation-bar/hooks/useAppTitle';
+import { useMetadataServerSettings } from '@/features/settings/services/ServerSettingsMetadata';
+import { useResizeObserver } from '@/base/hooks/useResizeObserver';
+import { useNavBarContext } from '@/features/navigation-bar/NavbarContext';
+import LibraryAddCheckIcon from '@mui/icons-material/LibraryAddCheck';
 
-interface LNMetadata {
-    id: string;
-    title: string;
-    author: string;
-    cover?: string;
-    addedAt: number;
-    isProcessing?: boolean;
-    isError?: boolean;
-    errorMsg?: string;
-    hasProgress?: boolean;
+interface LibraryItem extends LNMetadata {
+    importProgress?: number;
+    importMessage?: string;
 }
 
 const BottomGradient = styled('div')({
@@ -64,25 +61,46 @@ const BottomGradientDoubledDown = styled('div')({
 });
 
 type LNLibraryCardProps = {
-    ln: LNMetadata;
+    item: LibraryItem;
     onOpen: (id: string) => void;
     onDelete: (id: string, event: React.MouseEvent) => void;
+    isSelectionMode: boolean;
+    isSelected: boolean;
+    onToggleSelect: (id: string) => void;
+    onLongPress: (id: string) => void;
 };
 
-const LNLibraryCard = ({ ln, onOpen, onDelete }: LNLibraryCardProps) => {
+const LNLibraryCard = ({ item, onOpen, onDelete, isSelectionMode, isSelected, onToggleSelect, onLongPress }: LNLibraryCardProps) => {
     const preventMobileContextMenu = MediaQuery.usePreventMobileContextMenu();
     const optionButtonRef = useRef<HTMLButtonElement>(null);
+
     const longPressBind = useLongPress(
-        useCallback(
-            (e: any, { context }: any) => {
-                (context as () => void)?.();
+        useCallback((e: any, { context }: any) => {
+            if (isSelectionMode) return;
+            (context as () => void)?.();
+        }, [isSelectionMode]),
+        {
+            onCancel: (e, { context }) => {
+                // Prevent click after long press
             },
-            [],
-        ),
+            threshold: 500,
+            cancelOnMovement: true,
+        }
     );
 
+    const isProcessing = item.isProcessing || false;
+
+    const handleCardClick = () => {
+        if (isProcessing) return;
+        if (isSelectionMode) {
+            onToggleSelect(item.id);
+        } else {
+            onOpen(item.id);
+        }
+    };
+
     return (
-        <PopupState variant="popover" popupId={`ln-card-action-menu-${ln.id}`}>
+        <PopupState variant="popover" popupId={`ln-card-action-menu-${item.id}`}>
             {(popupState) => (
                 <>
                     <Box
@@ -98,30 +116,56 @@ const LNLibraryCard = ({ ln, onOpen, onDelete }: LNLibraryCardProps) => {
                             },
                         }}
                     >
-                        <Card
-                            sx={{
-                                aspectRatio: MANGA_COVER_ASPECT_RATIO,
-                                display: 'flex',
-                            }}
-                        >
+                        <Card sx={{ aspectRatio: MANGA_COVER_ASPECT_RATIO, display: 'flex' }}>
                             <CardActionArea
-                                {...longPressBind(() => popupState.open(optionButtonRef.current))}
-                                onClick={() => !ln.isProcessing && onOpen(ln.id)}
-                                onContextMenu={preventMobileContextMenu}
+                                {...longPressBind(() => {
+                                    if (!isSelectionMode) {
+                                        onLongPress(item.id);
+                                    }
+                                })}
+                                onClick={handleCardClick}
+                                onContextMenu={(e) => {
+                                    if (isSelectionMode) {
+                                        e.preventDefault();
+                                        return;
+                                    }
+                                    preventMobileContextMenu(e);
+                                }}
                                 sx={{
                                     position: 'relative',
                                     height: '100%',
-                                    cursor: ln.isProcessing ? 'wait' : 'pointer',
-                                    opacity: ln.isProcessing ? 0.7 : 1,
+                                    cursor: isProcessing ? 'wait' : 'pointer',
+                                    opacity: isProcessing ? 0.7 : 1,
                                 }}
                             >
-                                {ln.isProcessing ? (
-                                    <Skeleton variant="rectangular" width="100%" height="100%" />
-                                ) : ln.cover ? (
+                                {isProcessing ? (
+                                    <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
+                                        <Skeleton variant="rectangular" width="100%" height="100%" />
+                                        <Box
+                                            sx={{
+                                                position: 'absolute',
+                                                bottom: 0,
+                                                left: 0,
+                                                right: 0,
+                                                p: 1,
+                                                bgcolor: 'rgba(0,0,0,0.7)',
+                                            }}
+                                        >
+                                            <LinearProgress
+                                                variant="determinate"
+                                                value={item.importProgress || 0}
+                                                sx={{ mb: 0.5 }}
+                                            />
+                                            <Typography variant="caption" sx={{ color: 'white', fontSize: '0.65rem' }}>
+                                                {item.importMessage || 'Processing...'}
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                ) : item.cover ? (
                                     <Box
                                         component="img"
-                                        src={ln.cover}
-                                        alt={ln.title}
+                                        src={item.cover}
+                                        alt={item.title}
                                         loading="lazy"
                                         sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                     />
@@ -139,113 +183,132 @@ const LNLibraryCard = ({ ln, onOpen, onDelete }: LNLibraryCardProps) => {
                                         </Typography>
                                     </Stack>
                                 )}
-                                <Stack
-                                    direction="row"
-                                    sx={{
-                                        alignItems: 'start',
-                                        justifyContent: 'space-between',
-                                        position: 'absolute',
-                                        top: (theme) => theme.spacing(1),
-                                        left: (theme) => theme.spacing(1),
-                                        right: (theme) => theme.spacing(1),
-                                    }}
-                                >
-                                    {ln.hasProgress && !ln.isProcessing ? (
-                                        <Box
+
+                                {!isProcessing && (
+                                    <>
+                                        <Stack
+                                            direction="row"
                                             sx={{
-                                                bgcolor: 'primary.main',
-                                                color: 'white',
-                                                px: 1,
-                                                py: 0.5,
-                                                borderRadius: 1,
-                                                fontSize: '0.75rem',
-                                                fontWeight: 'bold',
-                                                boxShadow: 2,
+                                                alignItems: 'start',
+                                                justifyContent: 'space-between',
+                                                position: 'absolute',
+                                                top: (theme) => theme.spacing(1),
+                                                left: (theme) => theme.spacing(1),
+                                                right: (theme) => theme.spacing(1),
                                             }}
                                         >
-                                            READING
-                                        </Box>
-                                    ) : (
-                                        <Box />
-                                    )}
-                                    <CustomTooltip title="Options">
-                                        <IconButton
-                                            ref={optionButtonRef}
-                                            {...MUIUtil.preventRippleProp(bindTrigger(popupState), {
-                                                onClick: (event) => {
-                                                    event.stopPropagation();
-                                                    event.preventDefault();
-                                                    popupState.open();
-                                                },
-                                            })}
-                                            className="ln-option-button"
-                                            size="small"
+                                            {isSelectionMode ? (
+                                                <Checkbox
+                                                    checked={isSelected}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onToggleSelect(item.id);
+                                                    }}
+                                                    sx={{
+                                                        color: 'white',
+                                                        bgcolor: 'rgba(0,0,0,0.5)',
+                                                        borderRadius: 1,
+                                                        p: 0.5,
+                                                        '&.Mui-checked': {
+                                                            color: 'primary.main',
+                                                        },
+                                                    }}
+                                                />
+                                            ) : item.hasProgress ? (
+                                                <Box
+                                                    sx={{
+                                                        bgcolor: 'primary.main',
+                                                        color: 'white',
+                                                        px: 1,
+                                                        py: 0.5,
+                                                        borderRadius: 1,
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 'bold',
+                                                        boxShadow: 2,
+                                                    }}
+                                                >
+                                                    READING
+                                                </Box>
+                                            ) : (
+                                                <Box />
+                                            )}
+                                            {!isSelectionMode && (
+                                                <CustomTooltip title="Options">
+                                                    <IconButton
+                                                        ref={optionButtonRef}
+                                                        {...MUIUtil.preventRippleProp(bindTrigger(popupState), {
+                                                            onClick: (event) => {
+                                                                event.stopPropagation();
+                                                                event.preventDefault();
+                                                                popupState.open();
+                                                            },
+                                                        })}
+                                                        className="ln-option-button"
+                                                        size="small"
+                                                        sx={{
+                                                            minWidth: 'unset',
+                                                            paddingX: 0,
+                                                            paddingY: '2.5px',
+                                                            backgroundColor: 'primary.main',
+                                                            color: 'common.white',
+                                                            '&:hover': { backgroundColor: 'primary.main' },
+                                                            visibility: popupState.isOpen ? 'visible' : 'hidden',
+                                                            pointerEvents: 'none',
+                                                            '@media not (pointer: fine)': {
+                                                                visibility: 'hidden',
+                                                                width: 0,
+                                                                height: 0,
+                                                                p: 0,
+                                                                m: 0,
+                                                            },
+                                                        }}
+                                                    >
+                                                        <MoreVertIcon />
+                                                    </IconButton>
+                                                </CustomTooltip>
+                                            )}
+                                        </Stack>
+
+                                        <BottomGradient />
+                                        <BottomGradientDoubledDown />
+
+                                        <Stack
+                                            direction="row"
                                             sx={{
-                                                minWidth: 'unset',
-                                                paddingX: 0,
-                                                paddingY: '2.5px',
-                                                backgroundColor: 'primary.main',
-                                                color: 'common.white',
-                                                '&:hover': {
-                                                    backgroundColor: 'primary.main',
-                                                },
-                                                visibility: popupState.isOpen ? 'visible' : 'hidden',
-                                                pointerEvents: 'none',
-                                                '@media not (pointer: fine)': {
-                                                    visibility: 'hidden',
-                                                    width: 0,
-                                                    height: 0,
-                                                    p: 0,
-                                                    m: 0,
-                                                },
+                                                justifyContent: 'space-between',
+                                                alignItems: 'end',
+                                                position: 'absolute',
+                                                bottom: 0,
+                                                width: '100%',
+                                                p: 1,
+                                                gap: 1,
                                             }}
                                         >
-                                            <MoreVertIcon />
-                                        </IconButton>
-                                    </CustomTooltip>
-                                </Stack>
-                                <>
-                                    <BottomGradient />
-                                    <BottomGradientDoubledDown />
-                                </>
-                                <Stack
-                                    direction="row"
-                                    sx={{
-                                        justifyContent: 'space-between',
-                                        alignItems: 'end',
-                                        position: 'absolute',
-                                        bottom: 0,
-                                        width: '100%',
-                                        p: 1,
-                                        gap: 1,
-                                    }}
-                                >
-                                    {ln.isProcessing ? (
-                                        <Skeleton variant="text" width="70%" />
-                                    ) : (
-                                        <CustomTooltip title={ln.title} placement="top">
-                                            <TypographyMaxLines
-                                                component="h3"
-                                                sx={{
-                                                    color: 'white',
-                                                    textShadow: '0px 0px 3px #000000',
-                                                }}
-                                            >
-                                                {ln.title}
-                                            </TypographyMaxLines>
-                                        </CustomTooltip>
-                                    )}
-                                </Stack>
+                                            <CustomTooltip title={item.title} placement="top">
+                                                <TypographyMaxLines
+                                                    component="h3"
+                                                    sx={{
+                                                        color: 'white',
+                                                        textShadow: '0px 0px 3px #000000',
+                                                    }}
+                                                >
+                                                    {item.title}
+                                                </TypographyMaxLines>
+                                            </CustomTooltip>
+                                        </Stack>
+                                    </>
+                                )}
                             </CardActionArea>
                         </Card>
                     </Box>
-                    {popupState.isOpen && (
+
+                    {popupState.isOpen && !isSelectionMode && (
                         <Menu {...bindMenu(popupState)}>
                             {(onClose) => (
                                 <MenuItem
                                     onClick={(event) => {
                                         onClose();
-                                        onDelete(ln.id, event);
+                                        onDelete(item.id, event);
                                     }}
                                 >
                                     <ListItemIcon>
@@ -264,15 +327,17 @@ const LNLibraryCard = ({ ln, onOpen, onDelete }: LNLibraryCardProps) => {
 
 export const LNLibrary: React.FC = () => {
     const navigate = useNavigate();
-    const [library, setLibrary] = useState<LNMetadata[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [library, setLibrary] = useState<LibraryItem[]>([]);
+    const [isImporting, setIsImporting] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+
     const { navBarWidth } = useNavBarContext();
-    const {
-        settings: { mangaGridItemWidth },
-    } = useMetadataServerSettings();
+    const { settings: { mangaGridItemWidth } } = useMetadataServerSettings();
+
     const gridWrapperRef = useRef<HTMLDivElement>(null);
     const [dimensions, setDimensions] = useState(
-        gridWrapperRef.current?.offsetWidth ?? Math.max(0, document.documentElement.offsetWidth - navBarWidth),
+        gridWrapperRef.current?.offsetWidth ?? Math.max(0, document.documentElement.offsetWidth - navBarWidth)
     );
 
     useEffect(() => {
@@ -284,7 +349,7 @@ export const LNLibrary: React.FC = () => {
         useCallback(() => {
             const gridWidth = gridWrapperRef.current?.offsetWidth;
             setDimensions(gridWidth ?? document.documentElement.offsetWidth - navBarWidth);
-        }, [navBarWidth]),
+        }, [navBarWidth])
     );
 
     const gridColumns = Math.max(1, Math.ceil(dimensions / mangaGridItemWidth));
@@ -292,195 +357,340 @@ export const LNLibrary: React.FC = () => {
     const loadLibrary = async () => {
         try {
             const keys = await AppStorage.lnMetadata.keys();
-            const items: LNMetadata[] = [];
+            const items: LibraryItem[] = [];
+
             for (const key of keys) {
-                const item = await AppStorage.lnMetadata.getItem<LNMetadata>(key);
-                const hasProgress = await AppStorage.lnProgress.getItem(key);
-                if (item) items.push({ ...item, hasProgress: !!hasProgress });
+                const metadata = await AppStorage.lnMetadata.getItem<LNMetadata>(key);
+                if (metadata) {
+                    const hasProgress = await AppStorage.lnProgress.getItem(key);
+                    items.push({
+                        ...metadata,
+                        hasProgress: !!hasProgress,
+                    });
+                }
             }
+
             setLibrary(items.sort((a, b) => b.addedAt - a.addedAt));
         } catch (e) {
-            console.error("Failed to load library:", e);
+            console.error('Failed to load library:', e);
         }
     };
 
-    const resizeCover = useCallback((blob: Blob): Promise<string> => {
-        return new Promise((resolve) => {
-            const img = new Image();
-            const url = URL.createObjectURL(blob);
+    // Normalize title for comparison
+    const normalizeTitle = (title: string): string => {
+        return title
+            .toLowerCase()
+            .replace(/\.epub$/i, '')
+            .replace(/[^\p{L}\p{N}\s]/gu, '') // Unicode-aware: keeps all letters and numbers
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
 
-            img.onload = () => {
-                try {
-                    const canvas = document.createElement('canvas');
-                    // Resize to width 300px, maintain aspect ratio
-                    const scale = 300 / img.width;
-                    canvas.width = 300;
-                    canvas.height = img.height * scale;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.7)); // Save as Base64 JPEG
-                } catch {
-                    resolve('');
-                } finally {
-                    URL.revokeObjectURL(url);
-                }
-            };
-
-            img.onerror = () => {
-                URL.revokeObjectURL(url);
-                resolve('');
-            };
-            img.src = url;
-        });
+    // Check if a book with similar title already exists in current library state
+    const findDuplicateInLibrary = useCallback((title: string, currentLibrary: LibraryItem[]): LibraryItem | undefined => {
+        const normalizedTitle = normalizeTitle(title);
+        return currentLibrary.find(item =>
+            !item.isProcessing && normalizeTitle(item.title) === normalizedTitle
+        );
     }, []);
-
-    const processSingleFile = useCallback(async (file: File, tempId: string) => {
-        console.group(`Processing: ${file.name}`);
-        let isSuccess = false;
-
-        try {
-            // 1. Save Raw File to storage first
-            await AppStorage.saveEpubFile(tempId, file);
-
-            // 2. Open Zip to extract Metadata
-            const zip = new JSZip();
-            const content = await zip.loadAsync(file);
-
-            // 3. Find OPF
-            const containerXml = await content.file("META-INF/container.xml")?.async("string");
-            if (!containerXml) throw new Error("Invalid EPUB");
-
-            const parser = new DOMParser();
-            const containerDoc = parser.parseFromString(containerXml, "application/xml");
-            const opfPath = containerDoc.querySelector("rootfile")?.getAttribute("full-path");
-            if (!opfPath) throw new Error("Missing Rootfile");
-
-            const opfContent = await content.file(opfPath)?.async("string");
-            if (!opfContent) throw new Error("Missing OPF");
-
-            const opfDoc = parser.parseFromString(opfContent, "application/xml");
-
-            // 4. Extract Title/Author
-            const title = opfDoc.querySelector("metadata > title")?.textContent || file.name.replace('.epub', '');
-            const author = opfDoc.querySelector("metadata > creator")?.textContent || "Unknown";
-
-            // 5. Extract Cover
-            let coverBase64 = '';
-            try {
-                // Try standard cover-image property first
-                let coverItem = opfDoc.querySelector('manifest > item[properties*="cover-image"]');
-
-                // Fallback to id="cover" if not found
-                if (!coverItem) {
-                    coverItem = opfDoc.querySelector('manifest > item[id="cover"]')
-                        || opfDoc.querySelector('manifest > item[id="cover-image"]');
-                }
-
-                if (coverItem) {
-                    const href = coverItem.getAttribute("href");
-                    if (href) {
-                        const fullPath = resolvePath(opfPath, href);
-                        const coverBlob = await content.file(fullPath)?.async("blob");
-                        if (coverBlob) {
-                            coverBase64 = await resizeCover(coverBlob);
-                        }
-                    }
-                }
-            } catch (e) {
-                console.warn("Cover extraction failed", e);
-            }
-
-            const finalMeta: LNMetadata = {
-                id: tempId,
-                title,
-                author,
-                cover: coverBase64,
-                addedAt: Date.now(),
-                isProcessing: false,
-                isError: false
-            };
-
-            await AppStorage.lnMetadata.setItem(tempId, finalMeta);
-            setLibrary(prev => prev.map(item => item.id === tempId ? finalMeta : item));
-            isSuccess = true;
-
-        } catch (err: any) {
-            console.error("Import Error:", err);
-
-            const fallbackMeta: LNMetadata = {
-                id: tempId,
-                title: file.name.replace('.epub', ''),
-                author: 'Unknown (Parse Error)',
-                addedAt: Date.now(),
-                isProcessing: false,
-                isError: false,
-                errorMsg: "Metadata parsing failed."
-            };
-
-            if (!isSuccess) {
-                await AppStorage.lnMetadata.setItem(tempId, fallbackMeta);
-                setLibrary(prev => prev.map(item => item.id === tempId ? fallbackMeta : item));
-            }
-
-        } finally {
-            console.groupEnd();
-        }
-    }, [resizeCover]);
 
     const handleImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files?.length) return;
 
         const files = Array.from(e.target.files);
+        setIsImporting(true);
 
-        const newItems: LNMetadata[] = files.map((file, index) => ({
-            id: `ln_${Date.now()}_${index}`,
-            title: file.name,
-            author: 'Processing...',
-            addedAt: Date.now(),
-            isProcessing: true
-        }));
+        const skippedFiles: string[] = [];
+        const importedFiles: string[] = [];
 
-        setLibrary(prev => [...newItems, ...prev]);
-        setLoading(true);
+        // Keep track of current library state for duplicate checking
+        let currentLibrary = [...library];
 
-        for (let i = 0; i < files.length; i++) {
-            await processSingleFile(files[i], newItems[i].id);
+        for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+            const file = files[fileIndex];
+            const fileTitle = file.name.replace(/\.epub$/i, '');
+
+            // Check for duplicate by filename first
+            const existingBook = findDuplicateInLibrary(fileTitle, currentLibrary);
+
+            if (existingBook) {
+                const shouldReplace = window.confirm(
+                    `"${existingBook.title}" already exists in your library.\n\nDo you want to replace it?`
+                );
+
+                if (!shouldReplace) {
+                    skippedFiles.push(file.name);
+                    continue;
+                }
+
+                // Delete the existing book before importing
+                clearBookCache(existingBook.id);
+                await AppStorage.deleteLnData(existingBook.id);
+                currentLibrary = currentLibrary.filter(item => item.id !== existingBook.id);
+                setLibrary(prev => prev.filter(item => item.id !== existingBook.id));
+            }
+
+            const bookId = `ln_${Date.now()}_${fileIndex}`;
+
+            const placeholder: LibraryItem = {
+                id: bookId,
+                title: fileTitle,
+                author: '',
+                addedAt: Date.now(),
+                isProcessing: true,
+                importProgress: 0,
+                importMessage: 'Starting...',
+                stats: { chapterLengths: [], totalLength: 0 },
+                chapterCount: 0,
+            };
+
+            currentLibrary = [placeholder, ...currentLibrary];
+            setLibrary((prev) => [placeholder, ...prev]);
+
+            try {
+                const result = await parseEpub(file, bookId, (progress: ParseProgress) => {
+                    setLibrary((prev) =>
+                        prev.map((item) =>
+                            item.id === bookId
+                                ? {
+                                    ...item,
+                                    importProgress: progress.percent,
+                                    importMessage: progress.message,
+                                }
+                                : item
+                        )
+                    );
+                });
+
+                if (result.success && result.metadata && result.content) {
+                    // Check again for duplicate using parsed metadata title
+                    const metadataTitle = result.metadata.title;
+                    const duplicateByMetadata = findDuplicateInLibrary(metadataTitle, currentLibrary.filter(i => i.id !== bookId));
+
+                    if (duplicateByMetadata) {
+                        const shouldReplace = window.confirm(
+                            `The book "${metadataTitle}" already exists in your library (detected from EPUB metadata).\n\nDo you want to replace it?`
+                        );
+
+                        if (!shouldReplace) {
+                            // Remove the placeholder and skip
+                            currentLibrary = currentLibrary.filter(item => item.id !== bookId);
+                            setLibrary(prev => prev.filter(item => item.id !== bookId));
+                            skippedFiles.push(file.name);
+                            continue;
+                        }
+
+                        // Delete the existing book
+                        clearBookCache(duplicateByMetadata.id);
+                        await AppStorage.deleteLnData(duplicateByMetadata.id);
+                        currentLibrary = currentLibrary.filter(item => item.id !== duplicateByMetadata.id);
+                        setLibrary(prev => prev.filter(item => item.id !== duplicateByMetadata.id));
+                    }
+
+                    await Promise.all([
+                        AppStorage.files.setItem(bookId, file),
+                        AppStorage.lnMetadata.setItem(bookId, result.metadata),
+                        AppStorage.lnContent.setItem(bookId, result.content),
+                    ]);
+
+                    const finalItem: LibraryItem = {
+                        ...result.metadata,
+                        isProcessing: false,
+                        hasProgress: false,
+                    };
+
+                    // Update current library tracking
+                    currentLibrary = currentLibrary.map(item =>
+                        item.id === bookId ? finalItem : item
+                    );
+
+                    setLibrary((prev) =>
+                        prev.map((item) =>
+                            item.id === bookId ? finalItem : item
+                        )
+                    );
+
+                    importedFiles.push(result.metadata.title);
+                    console.log(`[Import] Complete: ${result.metadata.title}`);
+                    console.log(`[Import] Stats: ${result.metadata.chapterCount} chapters, ${result.metadata.stats.totalLength} chars`);
+                } else {
+                    setLibrary((prev) =>
+                        prev.map((item) =>
+                            item.id === bookId
+                                ? {
+                                    ...item,
+                                    isProcessing: false,
+                                    isError: true,
+                                    errorMsg: result.error || 'Import failed',
+                                }
+                                : item
+                        )
+                    );
+                }
+            } catch (err: any) {
+                console.error(`[Import] Error for ${file.name}:`, err);
+
+                setLibrary((prev) =>
+                    prev.map((item) =>
+                        item.id === bookId
+                            ? {
+                                ...item,
+                                isProcessing: false,
+                                isError: true,
+                                errorMsg: err.message || 'Unknown error',
+                            }
+                            : item
+                    )
+                );
+            }
         }
 
-        setLoading(false);
+        // Show summary if multiple files were processed
+        if (files.length > 1) {
+            const summary = [];
+            if (importedFiles.length > 0) {
+                summary.push(`Imported: ${importedFiles.length} book(s)`);
+            }
+            if (skippedFiles.length > 0) {
+                summary.push(`Skipped: ${skippedFiles.length}`);
+            }
+            if (summary.length > 0) {
+                console.log(`[Import Summary] ${summary.join(', ')}`);
+            }
+        }
+
+        setIsImporting(false);
         e.target.value = '';
-    }, [processSingleFile]);
+    }, [library, findDuplicateInLibrary]);
 
     const handleDelete = useCallback(async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!window.confirm("Delete this book?")) return;
-        setLibrary(prev => prev.filter(ln => ln.id !== id));
+
+        if (!window.confirm('Delete this book?')) return;
+
+        clearBookCache(id);
+        setLibrary((prev) => prev.filter((item) => item.id !== id));
         await AppStorage.deleteLnData(id);
     }, []);
 
+    const handleMultiDelete = useCallback(async () => {
+        if (selectedIds.size === 0) return;
+
+        const count = selectedIds.size;
+        if (!window.confirm(`Delete ${count} selected book${count > 1 ? 's' : ''}?`)) return;
+
+        // Delete all selected books
+        for (const id of selectedIds) {
+            clearBookCache(id);
+            await AppStorage.deleteLnData(id);
+        }
+
+        setLibrary((prev) => prev.filter((item) => !selectedIds.has(item.id)));
+        setSelectedIds(new Set());
+        setIsSelectionMode(false);
+    }, [selectedIds]);
+
+    const handleToggleSelect = useCallback((id: string) => {
+        setSelectedIds((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) {
+                newSet.delete(id);
+            } else {
+                newSet.add(id);
+            }
+            return newSet;
+        });
+    }, []);
+
+    const handleSelectAll = useCallback(() => {
+        const allIds = library.filter(item => !item.isProcessing).map(item => item.id);
+        setSelectedIds(new Set(allIds));
+    }, [library]);
+
+    const handleCancelSelection = useCallback(() => {
+        setSelectedIds(new Set());
+        setIsSelectionMode(false);
+    }, []);
+
+    const handleLongPress = useCallback((id: string) => {
+        setIsSelectionMode(true);
+        setSelectedIds(new Set([id]));
+    }, []);
+
+    const handleOpen = useCallback((id: string) => {
+        navigate(AppRoutes.ln.childRoutes.reader.path(id));
+    }, [navigate]);
+
     useAppTitle('Light Novels');
+
     const appAction = useMemo(
         () => (
-            <Button
-                color="inherit"
-                component="label"
-                startIcon={<UploadFileIcon />}
-                disabled={loading}
-                sx={{ textTransform: 'none' }}
-            >
-                {loading ? 'Processing...' : 'Import EPUB'}
-                <input type="file" accept=".epub" multiple hidden onChange={handleImport} />
-            </Button>
+            <Stack direction="row" spacing={1} alignItems="center">
+                {isSelectionMode ? (
+                    <>
+                        <Typography variant="body2" sx={{ color: 'inherit' }}>
+                            {selectedIds.size} selected
+                        </Typography>
+                        <Button
+                            color="inherit"
+                            onClick={handleSelectAll}
+                            size="small"
+                            sx={{ textTransform: 'none', minWidth: 'auto' }}
+                        >
+                            All
+                        </Button>
+                        <IconButton
+                            color="inherit"
+                            onClick={handleMultiDelete}
+                            disabled={selectedIds.size === 0}
+                            size="small"
+                        >
+                            <DeleteIcon />
+                        </IconButton>
+                        <Button
+                            color="inherit"
+                            onClick={handleCancelSelection}
+                            size="small"
+                            sx={{ textTransform: 'none', minWidth: 'auto' }}
+                        >
+                            Cancel
+                        </Button>
+                    </>
+                ) : (
+                    <>
+                        {/* Add Multi-Select Button here */}
+                        {library.length > 0 && (
+                            <IconButton
+                                color="inherit"
+                                onClick={() => setIsSelectionMode(true)}
+                                size="small"
+                                sx={{ mr: 1 }}
+                            >
+                                <LibraryAddCheckIcon />
+                            </IconButton>
+                        )}
+                        <Button
+                            color="inherit"
+                            component="label"
+                            startIcon={<UploadFileIcon />}
+                            disabled={isImporting}
+                            sx={{ textTransform: 'none' }}
+                        >
+                            {isImporting ? 'Importing...' : 'Import EPUB'}
+                            <input type="file" accept=".epub" multiple hidden onChange={handleImport} />
+                        </Button>
+                    </>
+                )}
+            </Stack>
         ),
-        [handleImport, loading],
+        [handleImport, isImporting, isSelectionMode, selectedIds.size, handleMultiDelete, handleSelectAll, handleCancelSelection, library.length]
     );
+
     useAppAction(appAction, [appAction]);
 
     return (
         <Box sx={{ p: 1 }}>
-            {loading && <LinearProgress sx={{ mb: 1 }} />}
-
-            {library.length === 0 && !loading && (
+            {library.length === 0 && !isImporting && (
                 <Typography variant="body1" color="text.secondary" align="center" sx={{ mt: 10 }}>
                     No books found. Import an EPUB to start reading.
                 </Typography>
@@ -494,12 +704,16 @@ export const LNLibrary: React.FC = () => {
                     gap: 1,
                 }}
             >
-                {library.map((ln) => (
-                    <Box key={ln.id}>
+                {library.map((item) => (
+                    <Box key={item.id}>
                         <LNLibraryCard
-                            ln={ln}
-                            onOpen={(id) => navigate(AppRoutes.ln.childRoutes.reader.path(id))}
+                            item={item}
+                            onOpen={handleOpen}
                             onDelete={handleDelete}
+                            isSelectionMode={isSelectionMode}
+                            isSelected={selectedIds.has(item.id)}
+                            onToggleSelect={handleToggleSelect}
+                            onLongPress={handleLongPress}
                         />
                     </Box>
                 ))}
