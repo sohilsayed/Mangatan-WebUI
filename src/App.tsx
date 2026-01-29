@@ -339,6 +339,15 @@ const ReaderApp = () => (
     </ErrorBoundary>
 );
 
+const ReaderLayout = () => (
+    <Box sx={{ display: 'flex' }}>
+        <Box sx={{ flexShrink: 0, position: 'relative', height: '100vh' }}>
+            <DefaultNavBar />
+        </Box>
+        <ReaderApp />
+    </Box>
+);
+
 const LNReaderApp = () => (
     <ErrorBoundary>
         <Routes>
@@ -372,7 +381,7 @@ export const App: React.FC = () => (
                     />
                     <Route
                         path={AppRoutes.reader.match}
-                        element={<ReaderApp />}
+                        element={<ReaderLayout />}
                     />
 
                     {/* Main App Layout with Sidebar */}
