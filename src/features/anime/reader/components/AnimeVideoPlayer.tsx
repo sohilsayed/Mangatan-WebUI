@@ -19,8 +19,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 import CloseIcon from '@mui/icons-material/Close';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
-import Replay10Icon from '@mui/icons-material/Replay10';
-import Forward10Icon from '@mui/icons-material/Forward10';
+import ReplayIcon from '@mui/icons-material/Replay';
+import ForwardIcon from '@mui/icons-material/Forward';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
 import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
 import VideoSettingsIcon from '@mui/icons-material/OndemandVideo';
@@ -3379,7 +3379,7 @@ export const AnimeVideoPlayer = ({
                                 color="inherit"
                                 sx={{ pointerEvents: 'auto' }}
                             >
-                                <Replay10Icon />
+                                <ReplayIcon />
                             </IconButton>
                             <IconButton
                                 onClick={(event) => {
@@ -3405,7 +3405,7 @@ export const AnimeVideoPlayer = ({
                                 color="inherit"
                                 sx={{ pointerEvents: 'auto' }}
                             >
-                                <Forward10Icon />
+                                <ForwardIcon />
                             </IconButton>
                         </Stack>
                     </Box>
