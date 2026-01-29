@@ -382,11 +382,11 @@ export const TextBox: React.FC<{
                 }
             }
 
-            let content = cleanPunctuation(block.text, settings.addSpaceOnMerge);
-            content = content.replace(/[\u200B\n\r]+/g, '');
+            const lookupContent = cleanPunctuation(block.text, settings.addSpaceOnMerge).replace(/\u200B/g, '\n');
+            const sentence = lookupContent.replace(/[\n\r]+/g, '');
 
             const encoder = new TextEncoder();
-            const prefix = content.substring(0, charOffset);
+            const prefix = lookupContent.substring(0, charOffset);
             const byteIndex = encoder.encode(prefix).length;
 
             setDictPopup({
@@ -397,11 +397,11 @@ export const TextBox: React.FC<{
                 isLoading: true,
                 systemLoading: false,
                 highlight: undefined,
-                context: { imgSrc, sentence: content, spreadData }
+                context: { imgSrc, sentence, spreadData }
             });
 
             // Pass the resultGroupingMode setting here
-            const results = await lookupYomitan(content, byteIndex, settings.resultGroupingMode);
+            const results = await lookupYomitan(lookupContent, byteIndex, settings.resultGroupingMode);
 
             if (results === 'loading') {
                  setDictPopup(prev => ({ ...prev, results: [], isLoading: false, systemLoading: true }));
