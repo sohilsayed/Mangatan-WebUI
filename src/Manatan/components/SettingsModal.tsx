@@ -747,6 +747,18 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                                                 Field where the screenshot image will be stored.
                                                             </div>
 
+                                                            <label>Sentence Audio Field</label>
+                                                            <select
+                                                                value={getFieldForContent('Sentence Audio')}
+                                                                onChange={(e) => handleContentToFieldChange('Sentence Audio', e.target.value)}
+                                                            >
+                                                                <option value="">(None)</option>
+                                                                {currentModelFields.map(f => <option key={f} value={f}>{f}</option>)}
+                                                            </select>
+                                                            <div style={{ gridColumn: '1 / -1', fontSize: '0.85em', color: '#aaa' }}>
+                                                                Field where the sentence audio will be stored.
+                                                            </div>
+
                                                         </div>
                                                     )}
                                                 </div>

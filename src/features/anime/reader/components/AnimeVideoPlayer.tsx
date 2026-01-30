@@ -33,6 +33,7 @@ import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
@@ -53,7 +54,7 @@ import { DictionaryResult } from '@/Manatan/types.ts';
 import { StructuredContent } from '@/Manatan/components/YomitanPopup.tsx';
 import { makeToast } from '@/base/utils/Toast.ts';
 import { MediaQuery } from '@/base/utils/MediaQuery.tsx';
-import { addNote, findNotes, guiBrowse } from '@/Manatan/utils/anki.ts';
+import { addNote, findNotes, guiBrowse, updateLastCard } from '@/Manatan/utils/anki.ts';
 import {
     AnimeHotkey,
     ANIME_HOTKEYS,
@@ -2595,18 +2596,28 @@ export const AnimeVideoPlayer = ({
         if (!settings.ankiConnectEnabled) {
             return;
         }
-        dictionaryResults.forEach((entry) => {
-            const entryKey = getDictionaryEntryKey(entry);
-            if (!settings.ankiCheckDuplicates) {
+        if (!settings.enableYomitan || !settings.ankiCheckDuplicates) {
+            dictionaryResults.forEach((entry) => {
+                const entryKey = getDictionaryEntryKey(entry);
                 setAnkiStatusByEntry((prev) => ({
                     ...prev,
                     [entryKey]: { status: 'missing', noteId: null },
                 }));
-                return;
-            }
+            });
+            return;
+        }
+        dictionaryResults.forEach((entry) => {
+            const entryKey = getDictionaryEntryKey(entry);
             checkDuplicateForEntry(entry);
         });
-    }, [dictionaryResults, dictionaryVisible, settings.ankiCheckDuplicates, settings.ankiConnectEnabled, checkDuplicateForEntry]);
+    }, [
+        dictionaryResults,
+        dictionaryVisible,
+        settings.ankiCheckDuplicates,
+        settings.ankiConnectEnabled,
+        settings.enableYomitan,
+        checkDuplicateForEntry,
+    ]);
 
     const handleAnkiOpen = useCallback(
         async (entry: DictionaryResult) => {
@@ -2712,12 +2723,85 @@ export const AnimeVideoPlayer = ({
         ],
     );
 
+    const handleAnkiReplaceLast = useCallback(
+        async (entry: DictionaryResult) => {
+            const entryKey = getDictionaryEntryKey(entry);
+            if (ankiActionPendingRef.current[entryKey]) {
+                return;
+            }
+            ankiActionPendingRef.current[entryKey] = true;
+            setAnkiActionPending((prev) => ({ ...prev, [entryKey]: true }));
+            try {
+                const rawSentence = dictionaryContext?.sentence || '';
+                if (!rawSentence) {
+                    showAlert('Sentence Missing', 'Select a subtitle to set the sentence context first.');
+                    return;
+                }
+                const map = settings.ankiFieldMap || {};
+                const sentenceField = Object.keys(map).find((key) => map[key] === 'Sentence') || '';
+                const imgField = Object.keys(map).find((key) => map[key] === 'Image') || '';
+                const audioField = Object.keys(map).find((key) => map[key] === 'Sentence Audio') || '';
+
+                if (!sentenceField && !imgField && !audioField) {
+                    showAlert('Anki Fields Missing', 'Set Sentence, Image, or Sentence Audio fields in settings.');
+                    return;
+                }
+
+                const url = settings.ankiConnectUrl || 'http://127.0.0.1:8765';
+                const imageBase64 = imgField ? await captureVideoFrame() : null;
+                const audioBase64 =
+                    audioField && dictionaryContext.audioStart != null && dictionaryContext.audioEnd != null
+                        ? await captureSentenceAudio(dictionaryContext.audioStart, dictionaryContext.audioEnd)
+                        : null;
+
+                if (imgField && !imageBase64) {
+                    makeToast('Could not capture a video frame for the Anki image.', 'warning');
+                }
+                if (audioField && !audioBase64) {
+                    makeToast('Could not capture sentence audio from the video.', 'warning');
+                }
+
+                await updateLastCard(
+                    url,
+                    undefined,
+                    rawSentence,
+                    imgField,
+                    sentenceField,
+                    settings.ankiImageQuality || 0.92,
+                    imageBase64 || undefined,
+                    audioField,
+                    audioBase64 || undefined,
+                );
+                makeToast('Anki card updated.', { variant: 'success', autoHideDuration: 1500 });
+            } catch (error: any) {
+                console.error('[AnimeVideoPlayer] Failed to update last card', error);
+                makeToast('Failed to update Anki card', 'error', error?.message ?? String(error));
+            } finally {
+                setAnkiActionPending((prev) => ({ ...prev, [entryKey]: false }));
+                ankiActionPendingRef.current[entryKey] = false;
+            }
+        },
+        [
+            captureSentenceAudio,
+            captureVideoFrame,
+            dictionaryContext,
+            setAnkiActionPending,
+            settings.ankiConnectUrl,
+            settings.ankiFieldMap,
+            settings.ankiImageQuality,
+            showAlert,
+        ],
+    );
+
     const getAnkiEntryStatus = useCallback(
         (entry: DictionaryResult) => {
+            if (!settings.enableYomitan) {
+                return 'missing';
+            }
             const entryKey = getDictionaryEntryKey(entry);
             return ankiStatusByEntry[entryKey]?.status ?? (settings.ankiCheckDuplicates ? 'unknown' : 'missing');
         },
-        [ankiStatusByEntry, settings.ankiCheckDuplicates],
+        [ankiStatusByEntry, settings.ankiCheckDuplicates, settings.enableYomitan],
     );
 
     const handleOverlayToggle = () => {
@@ -3477,62 +3561,86 @@ export const AnimeVideoPlayer = ({
                                                     >
                                                         <CloseIcon fontSize="small" />
                                                     </IconButton>
-                                                ) : (() => {
-                                                    const entryKey = getDictionaryEntryKey(entry);
-                                                    if (ankiActionPending[entryKey]) {
-                                                        return (
-                                                            <IconButton
-                                                                size="small"
-                                                                disabled
-                                                                title="Adding card..."
-                                                                sx={{ color: '#888' }}
-                                                            >
-                                                                <HourglassEmptyIcon fontSize="small" />
-                                                            </IconButton>
-                                                        );
-                                                    }
-                                                    const status = getAnkiEntryStatus(entry);
-                                                    if (status === 'exists') {
-                                                        return (
-                                                            <IconButton
-                                                                size="small"
-                                                                onClick={(event) => {
-                                                                    event.stopPropagation();
-                                                                    handleAnkiOpen(entry);
-                                                                }}
-                                                                title="Open in Anki"
-                                                                sx={{ color: '#2ecc71' }}
-                                                            >
-                                                                <MenuBookIcon fontSize="small" />
-                                                            </IconButton>
-                                                        );
-                                                    }
-                                                    if (status === 'missing') {
-                                                        return (
-                                                            <IconButton
-                                                                size="small"
-                                                                onClick={(event) => {
-                                                                    event.stopPropagation();
-                                                                    handleAnkiAdd(entry);
-                                                                }}
-                                                                title="Add to Anki"
-                                                                sx={{ color: '#4fb0ff' }}
-                                                            >
-                                                                <AddCircleOutlineIcon fontSize="small" />
-                                                            </IconButton>
-                                                        );
-                                                    }
-                                                    return (
-                                                        <IconButton
-                                                            size="small"
-                                                            disabled
-                                                            title="Checking duplicates"
-                                                            sx={{ color: '#888' }}
-                                                        >
-                                                            <HourglassEmptyIcon fontSize="small" />
-                                                        </IconButton>
-                                                    );
-                                                })()}
+                                                ) : (
+                                                    settings.enableYomitan
+                                                        ? (() => {
+                                                            const entryKey = getDictionaryEntryKey(entry);
+                                                            if (ankiActionPending[entryKey]) {
+                                                                return (
+                                                                    <IconButton
+                                                                        size="small"
+                                                                        disabled
+                                                                        title="Adding card..."
+                                                                        sx={{ color: '#888' }}
+                                                                    >
+                                                                        <HourglassEmptyIcon fontSize="small" />
+                                                                    </IconButton>
+                                                                );
+                                                            }
+                                                            const status = getAnkiEntryStatus(entry);
+                                                            if (status === 'exists') {
+                                                                return (
+                                                                    <IconButton
+                                                                        size="small"
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            handleAnkiOpen(entry);
+                                                                        }}
+                                                                        title="Open in Anki"
+                                                                        sx={{ color: '#2ecc71' }}
+                                                                    >
+                                                                        <MenuBookIcon fontSize="small" />
+                                                                    </IconButton>
+                                                                );
+                                                            }
+                                                            if (status === 'missing') {
+                                                                return (
+                                                                    <IconButton
+                                                                        size="small"
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            handleAnkiAdd(entry);
+                                                                        }}
+                                                                        title="Add to Anki"
+                                                                        sx={{ color: '#4fb0ff' }}
+                                                                    >
+                                                                        <AddCircleOutlineIcon fontSize="small" />
+                                                                    </IconButton>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <IconButton
+                                                                    size="small"
+                                                                    disabled
+                                                                    title="Checking duplicates"
+                                                                    sx={{ color: '#888' }}
+                                                                >
+                                                                    <HourglassEmptyIcon fontSize="small" />
+                                                                </IconButton>
+                                                            );
+                                                        })()
+                                                        : (() => {
+                                                            const entryKey = getDictionaryEntryKey(entry);
+                                                            const isPending = ankiActionPending[entryKey];
+                                                            return (
+                                                                <IconButton
+                                                                    size="small"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        if (isPending) {
+                                                                            return;
+                                                                        }
+                                                                        handleAnkiReplaceLast(entry);
+                                                                    }}
+                                                                    title={isPending ? 'Updating card...' : 'Update last card'}
+                                                                    sx={{ color: isPending ? '#888' : '#4fb0ff' }}
+                                                                    disabled={isPending}
+                                                                >
+                                                                    <NoteAddIcon fontSize="small" />
+                                                                </IconButton>
+                                                            );
+                                                        })()
+                                                )}
                                             </Stack>
                                         )}
                                     </Stack>
