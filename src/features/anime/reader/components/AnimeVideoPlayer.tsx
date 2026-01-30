@@ -621,6 +621,7 @@ export const AnimeVideoPlayer = ({
         (braveAudioFixMode === 'on' || (braveAudioFixMode === 'auto' && autoBraveFixDetected));
     const braveSegmentDurationRef = useRef<number | null>(null);
     const [isPageFullscreen, setIsPageFullscreen] = useState(false);
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
     const localSubtitleCuesRef = useRef<Map<string, SubtitleCue[]>>(new Map());
     const subtitleFileInputRef = useRef<HTMLInputElement | null>(null);
     const subtitleOffsetTapRef = useRef(0);
@@ -714,6 +715,63 @@ export const AnimeVideoPlayer = ({
             document.body.style.overflow = '';
         };
     }, [isPageFullscreen]);
+
+    const isNativeFullscreenActive = useCallback(() => {
+        if (typeof document === 'undefined') {
+            return false;
+        }
+        const wrapper = wrapperRef.current;
+        const fullscreenElement = document.fullscreenElement;
+        if (!wrapper || !fullscreenElement) {
+            return false;
+        }
+        return fullscreenElement === wrapper || wrapper.contains(fullscreenElement);
+    }, []);
+
+    const toggleFullscreen = useCallback(async () => {
+        const wrapper = wrapperRef.current;
+        if (typeof document === 'undefined') {
+            setIsPageFullscreen((prev) => !prev);
+            return;
+        }
+
+        if (isNativeFullscreenActive()) {
+            try {
+                await document.exitFullscreen();
+            } catch (err) {
+                setIsPageFullscreen(false);
+            }
+            return;
+        }
+
+        if (wrapper && wrapper.requestFullscreen) {
+            try {
+                await wrapper.requestFullscreen();
+                setIsPageFullscreen(true);
+            } catch (err) {
+                setIsPageFullscreen(true);
+            }
+            return;
+        }
+
+        setIsPageFullscreen((prev) => !prev);
+    }, [isNativeFullscreenActive]);
+
+    useEffect(() => {
+        if (typeof document === 'undefined') {
+            return;
+        }
+        const handleChange = () => {
+            if (!wrapperRef.current) {
+                return;
+            }
+            setIsPageFullscreen(isNativeFullscreenActive());
+        };
+        document.addEventListener('fullscreenchange', handleChange);
+        return () => {
+            document.removeEventListener('fullscreenchange', handleChange);
+        };
+    }, [isNativeFullscreenActive]);
 
     useEffect(() => {
         if (!isMobile || !fillHeight) {
@@ -2412,7 +2470,6 @@ export const AnimeVideoPlayer = ({
             resumePlaybackRef.current = Boolean(video && !video.paused);
             overlayVisibilityRef.current = isOverlayVisible;
         }
-        setIsPageFullscreen(false);
         video?.pause();
 
         const offsetSeconds = safeSubtitleOffsetMs / 1000;
@@ -3101,6 +3158,7 @@ export const AnimeVideoPlayer = ({
 
     return (
         <Box
+            ref={wrapperRef}
             sx={{
                 position: wrapperFixed ? 'fixed' : 'relative',
                 inset: wrapperFixed ? 0 : 'auto',
@@ -3621,7 +3679,7 @@ export const AnimeVideoPlayer = ({
                                 <IconButton
                                     onClick={(event) => {
                                         event.stopPropagation();
-                                        setIsPageFullscreen((prev) => !prev);
+                                        void toggleFullscreen();
                                     }}
                                     color="inherit"
                                 >
