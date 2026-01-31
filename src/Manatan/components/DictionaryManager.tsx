@@ -12,6 +12,8 @@ export const DictionaryManager: React.FC<{ onImportClick: () => void }> = ({ onI
         const list = await getDictionaries();
         if (list) {
             setDicts(list);
+        } else {
+            setTimeout(refresh, 1000);
         }
         setLoading(false);
     };

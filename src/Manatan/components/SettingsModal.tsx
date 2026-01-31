@@ -7,7 +7,7 @@ import { bindTrigger, usePopupState } from 'material-ui-popup-state/hooks';
 import { useOCR } from '@/Manatan/context/OCRContext';
 import { AppStorage } from '@/lib/storage/AppStorage.ts';
 import { COLOR_THEMES, DEFAULT_SETTINGS } from '@/Manatan/types';
-import { apiRequest, getAppVersion, checkForUpdates, triggerAppUpdate, installAppUpdate, getFrequencyDictionaries } from '@/Manatan/utils/api';
+import { apiRequest, getAppVersion, checkForUpdates, triggerAppUpdate, installAppUpdate, getFrequencyDictionaries, getDictionaries } from '@/Manatan/utils/api';
 import { DictionaryManager } from './DictionaryManager';
 import { getAnkiVersion, getDeckNames, getModelNames, getModelFields } from '@/Manatan/utils/anki';
 import { ResetButton } from '@/base/components/buttons/ResetButton.tsx';
@@ -119,6 +119,10 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [dictManagerKey, setDictManagerKey] = useState(0);
     const [dictionaryNames, setDictionaryNames] = useState<string[]>([]);
+    const persistSettings = useCallback((nextSettings: typeof settings) => {
+        AppStorage.local.setItem('mangatan_settings_v3', JSON.stringify(nextSettings));
+        setSettings(nextSettings);
+    }, [setSettings]);
     const animeHotkeys = useMemo(
         () => ({
             ...DEFAULT_ANIME_HOTKEYS,
@@ -133,6 +137,9 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         const fetchDictionaries = async () => {
             const list = await getDictionaries();
             if (!list || cancelled) {
+                if (!cancelled) {
+                    setTimeout(fetchDictionaries, 1000);
+                }
                 return;
             }
             const names = Array.from(new Set(list.map((dict) => dict.name).filter(Boolean)));
@@ -156,14 +163,16 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                 if (!changed) {
                     return prev;
                 }
-                return { ...prev, ankiFieldMap: nextMap };
+                const next = { ...prev, ankiFieldMap: nextMap };
+                persistSettings(next);
+                return next;
             });
         };
         fetchDictionaries();
         return () => {
             cancelled = true;
         };
-    }, [dictManagerKey]);
+    }, [dictManagerKey, persistSettings]);
 
     const mappingOptions = useMemo(() => {
         const baseOptions = BASE_MAPPING_OPTIONS.map((option) => ({ value: option, label: option }));
@@ -177,15 +186,19 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     const [availableFreqDicts, setAvailableFreqDicts] = useState<string[]>([]);
 
     const updateAnimeHotkey = useCallback((hotkey: AnimeHotkey, keys: string[]) => {
-        setLocalSettings((prev) => ({
-            ...prev,
-            animeHotkeys: {
-                ...DEFAULT_ANIME_HOTKEYS,
-                ...(prev.animeHotkeys ?? {}),
-                [hotkey]: keys,
-            },
-        }));
-    }, [setLocalSettings]);
+        setLocalSettings((prev) => {
+            const next = {
+                ...prev,
+                animeHotkeys: {
+                    ...DEFAULT_ANIME_HOTKEYS,
+                    ...(prev.animeHotkeys ?? {}),
+                    [hotkey]: keys,
+                },
+            };
+            persistSettings(next);
+            return next;
+        });
+    }, [persistSettings]);
 
     // --- ANKI STATE ---
     const [ankiStatus, setAnkiStatus] = useState<'idle' | 'loading' | 'connected' | 'error'>('idle');
@@ -337,10 +350,14 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     };
 
     const handleChange = async (key: keyof typeof settings | string, value: any) => {
-        setLocalSettings((prev) => ({ ...prev, [key]: value }));
+        setLocalSettings((prev) => {
+            const next = { ...prev, [key]: value };
+            persistSettings(next);
+            return next;
+        });
 
         if (key === 'enableYomitan' && value === true) {
-            const language = localSettings.yomitanLanguage || 'japanese';
+            const language = (key === 'yomitanLanguage' ? value : localSettings.yomitanLanguage) || 'japanese';
             await installDictionary(language);
         }
     };
@@ -385,18 +402,13 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         return Object.keys(localSettings.ankiFieldMap || {}).find(key => localSettings.ankiFieldMap?.[key] === contentType) || '';
     };
 
-    const save = () => {
-        AppStorage.local.setItem('mangatan_settings_v3', JSON.stringify(localSettings));
-        setSettings(localSettings);
-        onClose();
-        window.location.reload();
-    };
-
     const resetToDefaults = () => {
         showConfirm('Reset?', 'Revert to defaults?', () => {
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            setLocalSettings({ ...DEFAULT_SETTINGS, mobileMode: isMobile });
-            closeDialog(); 
+            const next = { ...DEFAULT_SETTINGS, mobileMode: isMobile };
+            setLocalSettings(next);
+            persistSettings(next);
+            closeDialog();
         });
     };
 
@@ -835,11 +847,15 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                                     value={localSettings.ankiModel || ''}
                                                     onChange={e => {
                                                         const newVal = e.target.value;
-                                                        setLocalSettings(prev => ({
-                                                            ...prev, 
-                                                            ankiModel: newVal,
-                                                            ankiFieldMap: {} 
-                                                        }));
+                                                        setLocalSettings(prev => {
+                                                            const next = {
+                                                                ...prev,
+                                                                ankiModel: newVal,
+                                                                ankiFieldMap: {},
+                                                            };
+                                                            persistSettings(next);
+                                                            return next;
+                                                        });
                                                     }}
                                                 >
                                                     <option value="">Select Card Type...</option>
@@ -1302,8 +1318,7 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                 </div>
                 <div className="ocr-modal-footer">
                     <button type="button" className="warning" onClick={resetToDefaults} style={{ marginRight: 'auto', background: '#e67e22', borderColor: '#d35400' }}>Defaults</button>
-                    <button type="button" onClick={onClose}>Cancel</button>
-                    <button type="button" className="primary" onClick={save}>Save & Reload</button>
+                    <button type="button" className="primary" onClick={onClose}>Close</button>
                 </div>
             </div>
         </div>

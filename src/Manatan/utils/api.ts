@@ -135,9 +135,12 @@ export const lookupYomitan = async (
     }
 };
 
-export const getDictionaries = async (): Promise<DictionaryMeta[]> => {
+export const getDictionaries = async (): Promise<DictionaryMeta[] | null> => {
     try {
         const res = await apiRequest<{ dictionaries: any[], status: string }>('/api/yomitan/dictionaries');
+        if (res.status && res.status !== 'ready') {
+            return null;
+        }
         // Backend returns "dictionaries" array with {id: [number], name, priority, enabled}
         return res.dictionaries.map(d => ({
             id: d.id, // Rust DictionaryId is a tuple struct or plain integer based on serialization
@@ -147,12 +150,15 @@ export const getDictionaries = async (): Promise<DictionaryMeta[]> => {
         }));
     } catch (e) {
         console.error("Failed to fetch dictionaries", e);
-        return [];
+        return null;
     }
 };
 export const getFrequencyDictionaries = async (): Promise<string[]> => {
     try {
         const dicts = await getDictionaries();
+        if (!dicts) {
+            return [];
+        }
         // Return all dictionary names (not just filtered ones)
         return dicts.map(d => d.name);
     } catch (e) {
