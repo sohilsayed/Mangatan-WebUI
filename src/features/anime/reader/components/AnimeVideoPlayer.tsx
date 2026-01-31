@@ -88,6 +88,13 @@ type SubtitleCue = {
     text: string;
 };
 
+type SwipeState = {
+    startX: number;
+    startY: number;
+    startTime: number;
+    moved: boolean;
+};
+
 type Props = {
     videoSrc: string;
     enableBraveAudioFix?: boolean;
@@ -546,6 +553,8 @@ export const AnimeVideoPlayer = ({
         ...HOTKEY_SCOPES[HotkeyScope.ANIME],
     }), []);
     const videoRef = useRef<HTMLVideoElement | null>(null);
+    const swipeStateRef = useRef<SwipeState | null>(null);
+    const swipeConsumedRef = useRef(false);
     const [isPaused, setIsPaused] = useState(true);
     const [isVideoLoading, setIsVideoLoading] = useState(true);
     const [isOverlayVisible, setIsOverlayVisible] = useState(true);
@@ -3128,6 +3137,66 @@ export const AnimeVideoPlayer = ({
         seekToTime(lastCue.start - offsetSeconds);
     }, [sortedSubtitleCues, safeSubtitleOffsetMs, currentTime, getCurrentSubtitleCue, seekBy, seekToTime]);
 
+    const handleSwipeStart = useCallback(
+        (event: React.TouchEvent<HTMLDivElement>) => {
+            if (event.touches.length !== 1 || isAnyMenuOpen || dictionaryVisible) {
+                swipeStateRef.current = null;
+                return;
+            }
+            const touch = event.touches[0];
+            swipeStateRef.current = {
+                startX: touch.clientX,
+                startY: touch.clientY,
+                startTime: Date.now(),
+                moved: false,
+            };
+            swipeConsumedRef.current = false;
+        },
+        [dictionaryVisible, isAnyMenuOpen],
+    );
+
+    const handleSwipeMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+        const state = swipeStateRef.current;
+        if (!state || event.touches.length !== 1) {
+            return;
+        }
+        const touch = event.touches[0];
+        const deltaX = touch.clientX - state.startX;
+        const deltaY = touch.clientY - state.startY;
+        if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+            state.moved = true;
+        }
+    }, []);
+
+    const handleSwipeEnd = useCallback(
+        (event: React.TouchEvent<HTMLDivElement>) => {
+            const state = swipeStateRef.current;
+            swipeStateRef.current = null;
+            if (!state || !state.moved || isAnyMenuOpen || dictionaryVisible) {
+                return;
+            }
+            const touch = event.changedTouches[0];
+            if (!touch) {
+                return;
+            }
+            const deltaX = touch.clientX - state.startX;
+            const deltaY = touch.clientY - state.startY;
+            const absX = Math.abs(deltaX);
+            const absY = Math.abs(deltaY);
+            const elapsed = Date.now() - state.startTime;
+            if (elapsed > 800 || absX < 60 || absX < absY * 1.2) {
+                return;
+            }
+            swipeConsumedRef.current = true;
+            if (deltaX < 0) {
+                skipToPreviousSubtitle();
+            } else {
+                skipToNextSubtitle();
+            }
+        },
+        [dictionaryVisible, isAnyMenuOpen, skipToNextSubtitle, skipToPreviousSubtitle],
+    );
+
     const toggleSubtitles = useCallback(() => {
         setIsSubtitleDisabled((prev) => !prev);
     }, [setIsSubtitleDisabled]);
@@ -3323,6 +3392,10 @@ export const AnimeVideoPlayer = ({
                 boxSizing: 'border-box',
             }}
             onClick={() => {
+                if (swipeConsumedRef.current) {
+                    swipeConsumedRef.current = false;
+                    return;
+                }
                 if (dictionaryVisible) {
                     resumeFromDictionary();
                     return;
@@ -3332,6 +3405,9 @@ export const AnimeVideoPlayer = ({
                 }
                 handleOverlayToggle();
             }}
+            onTouchStart={handleSwipeStart}
+            onTouchMove={handleSwipeMove}
+            onTouchEnd={handleSwipeEnd}
         >
             <Box
                 sx={{
