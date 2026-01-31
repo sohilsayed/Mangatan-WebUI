@@ -363,7 +363,7 @@ const parseSubtitles = (input: string, url: string): SubtitleCue[] => {
 
 const buildAnkiTags = (entry: DictionaryResult): string[] => {
     const allTags = new Set(['manatan']);
-    entry.definitions?.forEach((def) => def.tags?.forEach((tag) => allTags.add(tag)));
+    entry.glossary?.forEach((def) => def.tags?.forEach((tag) => allTags.add(tag)));
     entry.termTags?.forEach((tag: any) => {
         if (typeof tag === 'string') {
             allTags.add(tag);
@@ -480,7 +480,7 @@ const buildDefinitionHtml = (entry: DictionaryResult): string => {
         return generateHTML(content);
     };
 
-    return entry.definitions
+    return entry.glossary
         .map((def, idx) => {
             const tagsHTML = (def.tags ?? [])
                 .map(
@@ -2348,7 +2348,9 @@ export const AnimeVideoPlayer = ({
                 if (mapType === 'Target Word') fields[ankiField] = entry.headword;
                 else if (mapType === 'Reading') fields[ankiField] = entry.reading;
                 else if (mapType === 'Furigana') fields[ankiField] = generateAnkiFurigana(entry);
-                else if (mapType === 'Definition') fields[ankiField] = buildDefinitionHtml(entry);
+                else if (mapType === 'Definition' || mapType === 'Glossary') {
+                    fields[ankiField] = buildDefinitionHtml(entry);
+                }
                 else if (mapType === 'Frequency') fields[ankiField] = getLowestFrequency(entry);
                 else if (mapType === 'Sentence') fields[ankiField] = sentence;
             });
@@ -3932,7 +3934,7 @@ export const AnimeVideoPlayer = ({
                                             ))}
                                         </Box>
                                     )}
-                                    {entry.definitions?.map((def, defIndex) => (
+                                    {entry.glossary?.map((def, defIndex) => (
                                         <Stack key={`${entry.headword}-def-${defIndex}`} sx={{ mb: 1 }}>
                                             <Stack direction="row" spacing={1} sx={{ mb: 0.5 }}>
                                                 {def.tags?.map((tag, tagIndex) => (

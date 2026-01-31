@@ -94,7 +94,7 @@ const MAPPING_OPTIONS = [
     'Furigana',
     'Reading',
     'Target Word',
-    'Definition',
+    'Glossary',
     'Frequency',
 ];
 export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {

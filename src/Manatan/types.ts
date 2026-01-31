@@ -126,7 +126,7 @@ export interface DictionaryResult {
     headword: string;
     reading: string;
     furigana?: string[][]; 
-    definitions: DictionaryDefinition[];
+    glossary: DictionaryDefinition[];
     forms?: { headword: string; reading: string }[];
     source?: number;
     matchLen?: number; 

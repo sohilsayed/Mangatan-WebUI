@@ -250,7 +250,7 @@ const AnkiButtons: React.FC<{
             return Math.min(...numbers).toString();
         };
 
-        const definitionHTML = entry.definitions.map((def, idx) => {
+            const definitionHTML = entry.glossary.map((def, idx) => {
             const tagsHTML = def.tags.map(t => 
                 `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #666; vertical-align: middle;">${t}</span>`
             ).join('');
@@ -277,9 +277,9 @@ const AnkiButtons: React.FC<{
             `;
         }).join('');
 
-        // Collect all tags from all definitions
+        // Collect all tags from all glossary entries
         const allTags = new Set(['manatan']);
-        entry.definitions.forEach(def => def.tags.forEach(t => allTags.add(t)));
+        entry.glossary.forEach(def => def.tags.forEach(t => allTags.add(t)));
         // Safely add termTags by checking if they are strings or objects
         entry.termTags?.forEach((t: any) => {
             if (typeof t === 'string') allTags.add(t);
@@ -291,7 +291,7 @@ const AnkiButtons: React.FC<{
             if (mapType === 'Target Word') fields[ankiField] = entry.headword;
             else if (mapType === 'Reading') fields[ankiField] = entry.reading;
             else if (mapType === 'Furigana') fields[ankiField] = generateAnkiFurigana(entry.furigana || []);
-            else if (mapType === 'Definition') fields[ankiField] = definitionHTML;
+            else if (mapType === 'Definition' || mapType === 'Glossary') fields[ankiField] = definitionHTML;
             else if (mapType === 'Frequency') fields[ankiField] = getLowestFrequency();
             else if (mapType === 'Sentence') fields[ankiField] = dictPopup.context?.sentence || '';
         }
@@ -718,9 +718,9 @@ export const YomitanPopup = () => {
                         )}
 
                         {/* --- DEFINITIONS --- */}
-                        {entry.definitions && (
+                        {entry.glossary && (
                             <div>
-                                {entry.definitions.map((def, defIdx) => (
+                                {entry.glossary.map((def, defIdx) => (
                                     <div key={defIdx} style={{ display: 'flex', marginBottom: '12px' }}>
                                         <div style={{ flexShrink: 0, width: '24px', color: '#888', fontWeight: 'bold' }}>
                                             {defIdx + 1}.

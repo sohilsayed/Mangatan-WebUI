@@ -57,6 +57,14 @@ export const OCRProvider = ({ children }: { children: ReactNode }) => {
                 // Ensure legacy settings are cleaned up if necessary
                 const parsed = JSON.parse(saved);
                 if ('brightnessMode' in parsed) delete parsed.brightnessMode;
+                if (parsed.ankiFieldMap) {
+                    parsed.ankiFieldMap = Object.fromEntries(
+                        Object.entries(parsed.ankiFieldMap).map(([key, value]) => [
+                            key,
+                            value === 'Definition' ? 'Glossary' : value,
+                        ]),
+                    );
+                }
                 return { ...DEFAULT_SETTINGS, ...parsed };
             }
         } catch (e) { console.error("Failed to load settings", e); }
