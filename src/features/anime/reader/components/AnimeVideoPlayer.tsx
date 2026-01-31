@@ -4026,8 +4026,8 @@ export const AnimeVideoPlayer = ({
                                     sx={{
                                         position: 'absolute',
                                         top: '50%',
-                                        left: 12,
-                                        right: 12,
+                                        left: 0,
+                                        right: 0,
                                         height: 4,
                                         transform: 'translateY(-50%)',
                                         backgroundColor: 'rgba(255,255,255,0.2)',
