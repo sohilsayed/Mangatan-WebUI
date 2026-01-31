@@ -10,12 +10,18 @@ import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
+import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
 import MenuItem from '@mui/material/MenuItem';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import Slider from '@mui/material/Slider';
 import Menu from '@mui/material/Menu';
 import CircularProgress from '@mui/material/CircularProgress';
+import TextField from '@mui/material/TextField';
 import CloseIcon from '@mui/icons-material/Close';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
@@ -578,6 +584,8 @@ export const AnimeVideoPlayer = ({
         0,
     );
     const safeSubtitleOffsetMs = Number.isFinite(subtitleOffsetMs) ? subtitleOffsetMs : 0;
+    const [subtitleOffsetDialogOpen, setSubtitleOffsetDialogOpen] = useState(false);
+    const [subtitleOffsetInput, setSubtitleOffsetInput] = useState(`${safeSubtitleOffsetMs}`);
     const [highlightedSubtitle, setHighlightedSubtitle] = useState<{
         key: string;
         start: number;
@@ -652,7 +660,6 @@ export const AnimeVideoPlayer = ({
     const braveSegmentDurationRef = useRef<number | null>(null);
     const localSubtitleCuesRef = useRef<Map<string, SubtitleCue[]>>(new Map());
     const subtitleFileInputRef = useRef<HTMLInputElement | null>(null);
-    const subtitleOffsetTapRef = useRef(0);
     const audioContextRef = useRef<AudioContext | null>(null);
     const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
     const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
@@ -675,33 +682,31 @@ export const AnimeVideoPlayer = ({
         setHighlightedSubtitle(null);
     }, []);
 
-    const promptSubtitleOffset = useCallback(() => {
+    const openSubtitleOffsetDialog = useCallback(() => {
         const currentValue = Number.isFinite(safeSubtitleOffsetMs) ? safeSubtitleOffsetMs : 0;
-        const input = window.prompt('Subtitle offset (ms)', `${currentValue}`);
-        if (input === null) {
-            return;
-        }
-        const nextValue = Number(input.trim());
+        setSubtitleOffsetInput(`${currentValue}`);
+        setSubtitleOffsetDialogOpen(true);
+    }, [safeSubtitleOffsetMs]);
+
+    const closeSubtitleOffsetDialog = useCallback(() => {
+        setSubtitleOffsetDialogOpen(false);
+    }, []);
+
+    const applySubtitleOffsetInput = useCallback(() => {
+        const nextValue = Number(subtitleOffsetInput.trim());
         if (!Number.isFinite(nextValue)) {
             makeToast('Enter a valid number of milliseconds.', 'warning');
             return;
         }
         setSubtitleOffsetMs(Math.round(nextValue));
-    }, [safeSubtitleOffsetMs, setSubtitleOffsetMs]);
+        setSubtitleOffsetDialogOpen(false);
+    }, [setSubtitleOffsetMs, subtitleOffsetInput]);
 
-    const handleSubtitleOffsetTap = useCallback(
-        (event: React.TouchEvent) => {
-            event.stopPropagation();
-            const now = Date.now();
-            if (now - subtitleOffsetTapRef.current < 300) {
-                subtitleOffsetTapRef.current = 0;
-                promptSubtitleOffset();
-                return;
-            }
-            subtitleOffsetTapRef.current = now;
-        },
-        [promptSubtitleOffset],
-    );
+    const resetSubtitleOffset = useCallback(() => {
+        setSubtitleOffsetMs(0);
+        setSubtitleOffsetInput('0');
+        setSubtitleOffsetDialogOpen(false);
+    }, [setSubtitleOffsetMs]);
 
     useEffect(() => {
         if (shouldRenderSubtitles) {
@@ -4135,18 +4140,13 @@ export const AnimeVideoPlayer = ({
                                         variant="caption"
                                         onClick={(event) => {
                                             event.stopPropagation();
-                                            if (isMobile) {
-                                                return;
-                                            }
-                                            promptSubtitleOffset();
+                                            openSubtitleOffsetDialog();
                                         }}
                                         onTouchEnd={(event) => {
-                                            if (!isMobile) {
-                                                return;
-                                            }
-                                            handleSubtitleOffsetTap(event);
+                                            event.stopPropagation();
+                                            openSubtitleOffsetDialog();
                                         }}
-                                        sx={{ cursor: isMobile ? 'default' : 'pointer' }}
+                                        sx={{ cursor: 'pointer' }}
                                     >
                                         {safeSubtitleOffsetMs} ms
                                     </Typography>
@@ -4357,6 +4357,67 @@ export const AnimeVideoPlayer = ({
                             </MenuItem>
                         )}
                     </Menu>
+                    <Dialog
+                        open={subtitleOffsetDialogOpen}
+                        onClose={(_, reason) => {
+                            if (reason === 'backdropClick') {
+                                return;
+                            }
+                            closeSubtitleOffsetDialog();
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                        disablePortal={isFullscreenOverlay}
+                        container={menuContainer}
+                        disableEscapeKeyDown={false}
+                    >
+                        <DialogTitle>Subtitle offset</DialogTitle>
+                        <DialogContent sx={{ pt: 2, minWidth: 280 }}>
+                            <TextField
+                                label="Offset (ms)"
+                                type="number"
+                                value={subtitleOffsetInput}
+                                onChange={(event) => setSubtitleOffsetInput(event.target.value)}
+                                fullWidth
+                                autoFocus
+                                margin="dense"
+                                InputLabelProps={{ shrink: true }}
+                                inputProps={{ step: 1 }}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                        event.preventDefault();
+                                        applySubtitleOffsetInput();
+                                    }
+                                }}
+                            />
+                        </DialogContent>
+                        <DialogActions>
+                            <Button
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    resetSubtitleOffset();
+                                }}
+                            >
+                                Reset
+                            </Button>
+                            <Button
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    closeSubtitleOffsetDialog();
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="contained"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    applySubtitleOffsetInput();
+                                }}
+                            >
+                                Save
+                            </Button>
+                        </DialogActions>
+                    </Dialog>
                 </Box>
             )}
                 </Box>
