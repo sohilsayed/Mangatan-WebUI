@@ -510,7 +510,12 @@ export const TextBox: React.FC<{
             });
 
             // Pass the resultGroupingMode setting here
-            const results = await lookupYomitan(cleanContent, byteIndex, settings.resultGroupingMode);
+            const results = await lookupYomitan(
+                cleanContent,
+                byteIndex,
+                settings.resultGroupingMode,
+                settings.yomitanLanguage
+            );
 
             if (results === 'loading') {
                  setDictPopup(prev => ({ ...prev, results: [], isLoading: false, systemLoading: true }));

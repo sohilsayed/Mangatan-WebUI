@@ -247,7 +247,8 @@ export function useTextLookup() {
         const results = await lookupYomitan(
             sentence,
             byteOffset,
-            settings.resultGroupingMode || 'grouped'
+            settings.resultGroupingMode || 'grouped',
+            settings.yomitanLanguage
         );
 
         if (results === 'loading') {

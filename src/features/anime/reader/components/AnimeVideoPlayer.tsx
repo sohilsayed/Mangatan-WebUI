@@ -2500,7 +2500,12 @@ export const AnimeVideoPlayer = ({
         setDictionarySystemLoading(false);
         setIsOverlayVisible(false);
 
-        const results = await lookupYomitan(text, byteIndex, settings.resultGroupingMode);
+        const results = await lookupYomitan(
+            text,
+            byteIndex,
+            settings.resultGroupingMode,
+            settings.yomitanLanguage
+        );
         if (results === 'loading') {
             setDictionaryLoading(false);
             setDictionarySystemLoading(true);

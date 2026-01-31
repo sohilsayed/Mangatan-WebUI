@@ -513,7 +513,12 @@ export const YomitanPopup = () => {
         }));
 
         try {
-            const results = await lookupYomitan(lookupText, 0, settings.resultGroupingMode);
+            const results = await lookupYomitan(
+                lookupText,
+                0,
+                settings.resultGroupingMode,
+                settings.yomitanLanguage
+            );
             if (results === 'loading') {
                 setDictPopup((prev) => ({
                     ...prev,

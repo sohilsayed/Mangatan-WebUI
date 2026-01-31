@@ -1,4 +1,4 @@
-import { DictionaryResult } from '../types';
+import { DictionaryResult, YomitanLanguage } from '../types';
 
 export type AuthCredentials = { user?: string; pass?: string };
 
@@ -115,12 +115,14 @@ export const apiRequest = async <T>(
 export const lookupYomitan = async (
     text: string, 
     index: number = 0, 
-    groupingMode: 'grouped' | 'flat' = 'grouped'
+    groupingMode: 'grouped' | 'flat' = 'grouped',
+    language?: YomitanLanguage
 ): Promise<DictionaryResult[] | 'loading'> => {
     try {
         // Convert dropdown value to backend boolean
         const groupParam = groupingMode === 'grouped';
-        const url = `/api/yomitan/lookup?text=${encodeURIComponent(text)}&index=${index}&group=${groupParam}`;
+        const languageParam = language ? `&language=${encodeURIComponent(language)}` : '';
+        const url = `/api/yomitan/lookup?text=${encodeURIComponent(text)}&index=${index}&group=${groupParam}${languageParam}`;
         const res = await apiRequest<any>(url);
         
         if (res && res.error === 'loading') return 'loading';
