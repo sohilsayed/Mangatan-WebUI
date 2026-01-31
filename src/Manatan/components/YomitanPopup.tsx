@@ -193,7 +193,6 @@ const AnkiButtons: React.FC<{
         };
 
         // --- HTML GENERATION HELPERS ---
-        
         const styleToString = (style: any) => {
             if (!style) return '';
             return Object.entries(style).map(([k, v]) => {
@@ -276,45 +275,70 @@ const AnkiButtons: React.FC<{
             return Math.min(...numbers).toString();
         };
 
+        const getHarmonicMeanFrequency = (): string => {
+            if (!entry.frequencies || entry.frequencies.length === 0) return '';
+            const numbers = entry.frequencies
+                .map(f => {
+                    const cleaned = f.value.replace(/[^\d]/g, '');
+                    return parseInt(cleaned, 10);
+                })
+                .filter(n => !isNaN(n) && n > 0);
+
+            if (numbers.length === 0) return '';
+            const sumOfReciprocals = numbers.reduce((sum, n) => sum + (1 / n), 0);
+            return Math.round(numbers.length / sumOfReciprocals).toString();
+        };
+
+        const getFrequency = (): string => {
+            const mode = settings.ankiFreqMode || 'lowest'; // Default to lowest
+            if (mode === 'lowest') return getLowestFrequency();
+            if (mode === 'harmonic') return getHarmonicMeanFrequency();
+
+            // Try to find specific dictionary
+            const freqEntry = entry.frequencies?.find(f => f.dictionaryName === mode);
+            if (freqEntry) return freqEntry.value;
+
+            // Fallback
+            return getLowestFrequency();
+        };
+
+        // --- GLOSSARY HTML BUILDER ---
         const buildGlossaryHtml = (dictionaryName?: string): string => {
             const glossaryEntries = dictionaryName
                 ? entry.glossary.filter((def) => def.dictionaryName === dictionaryName)
                 : entry.glossary;
-            if (!glossaryEntries.length) {
-                return '';
-            }
-            return glossaryEntries.map((def, idx) => {
-            const tagsHTML = def.tags.map(t => 
-                `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #666; vertical-align: middle;">${t}</span>`
-            ).join('');
+            if (!glossaryEntries.length) return '';
             
-            const dictHTML = `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #9b59b6; vertical-align: middle;">${def.dictionaryName}</span>`;
+            return glossaryEntries.map((def, idx) => {
+                const tagsHTML = def.tags.map(t => 
+                    `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #666; vertical-align: middle;">${t}</span>`
+                ).join('');
+                
+                const dictHTML = `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #9b59b6; vertical-align: middle;">${def.dictionaryName}</span>`;
+                const contentHTML = def.content.map((c) => {
+                    try {
+                        const parsed = JSON.parse(c);
+                        return `<div style="margin-bottom: 2px;">${generateHTML(parsed)}</div>`;
+                    } catch {
+                        return `<div>${c}</div>`;
+                    }
+                }).join('');
 
-            const contentHTML = def.content.map(c => {
-                try {
-                    const parsed = JSON.parse(c);
-                    return `<div style="margin-bottom: 2px;">${generateHTML(parsed)}</div>`;
-                } catch {
-                    return `<div>${c}</div>`;
-                }
-            }).join('');
-
-            return `
-                <div style="margin-bottom: 12px; display: flex;">
-                    <div style="flex-shrink: 0; width: 24px; font-weight: bold;">${idx + 1}.</div>
-                    <div style="flex-grow: 1;">
-                        <div style="margin-bottom: 4px;">${tagsHTML}${dictHTML}</div>
-                        <div>${contentHTML}</div>
+                return `
+                    <div style="margin-bottom: 12px; display: flex;">
+                        <div style="flex-shrink: 0; width: 24px; font-weight: bold;">${idx + 1}.</div>
+                        <div style="flex-grow: 1;">
+                            <div style="margin-bottom: 4px;">${tagsHTML}${dictHTML}</div>
+                            <div>${contentHTML}</div>
+                        </div>
                     </div>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
         };
 
-        // Collect all tags from all glossary entries
+        // Collect all tags
         const allTags = new Set(['manatan']);
         entry.glossary.forEach(def => def.tags.forEach(t => allTags.add(t)));
-        // Safely add termTags by checking if they are strings or objects
         entry.termTags?.forEach((t: any) => {
             if (typeof t === 'string') allTags.add(t);
             else if (t && typeof t === 'object' && t.name) allTags.add(t.name);
@@ -354,7 +378,7 @@ const AnkiButtons: React.FC<{
             else if (mapType === 'Reading') fields[ankiField] = entry.reading;
             else if (mapType === 'Furigana') fields[ankiField] = generateAnkiFurigana(entry.furigana || []);
             else if (mapType === 'Definition' || mapType === 'Glossary') fields[ankiField] = buildGlossaryHtml();
-            else if (mapType === 'Frequency') fields[ankiField] = getLowestFrequency();
+            else if (mapType === 'Frequency') fields[ankiField] = getFrequency(); 
             else if (mapType === 'Sentence') fields[ankiField] = sentence;
             else if (mapType === 'Sentence Furigana') fields[ankiField] = sentenceFurigana;
             else if (mapType === 'Word Audio') fields[ankiField] = '';
@@ -413,6 +437,7 @@ const AnkiButtons: React.FC<{
             setStatus('missing');
         }
     };
+
 
     const handleOpen = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -516,6 +541,42 @@ export const YomitanPopup = () => {
     const [wordAudioAvailability, setWordAudioAvailability] = useState<Record<WordAudioSource, boolean> | null>(null);
     const [wordAudioAutoAvailable, setWordAudioAutoAvailable] = useState<boolean | null>(null);
     const autoPlayKeyRef = useRef<string | null>(null);
+
+    const calculateHarmonicMean = useCallback((frequencies: any[]): number | null => {
+        if (!frequencies || frequencies.length === 0) return null;
+
+        const numbers = frequencies
+            .map(f => {
+                const cleaned = f.value.replace(/[^\d]/g, '');
+                return parseInt(cleaned, 10);
+            })
+            .filter(n => !isNaN(n) && n > 0);
+
+        if (numbers.length === 0) return null;
+
+        const sumOfReciprocals = numbers.reduce((sum, n) => sum + (1 / n), 0);
+        return Math.round(numbers.length / sumOfReciprocals);
+    }, []);
+
+    const processedEntries = useMemo(() => {
+        if (!settings.showHarmonicMeanFreq) return dictPopup.results;
+
+        return dictPopup.results.map(entry => {
+            if (!entry.frequencies || entry.frequencies.length === 0) return entry;
+
+            const harmonicMean = calculateHarmonicMean(entry.frequencies);
+            if (harmonicMean === null) return entry;
+
+            return {
+                ...entry,
+                frequencies: [{
+                    dictionaryName: 'Harmonic Mean',
+                    value: harmonicMean.toString()
+                }]
+            };
+        });
+    }, [dictPopup.results, settings.showHarmonicMeanFreq, calculateHarmonicMean]);
+
     const getLookupTextFromHref = useCallback((href: string, fallback: string) => {
         const safeFallback = fallback.trim();
         if (!href) {
@@ -839,8 +900,8 @@ export const YomitanPopup = () => {
             >
                 {dictPopup.isLoading && <div style={{ textAlign: 'center', padding: '20px', color: '#aaa' }}>Scanning...</div>}
 
-                {!dictPopup.isLoading && dictPopup.results.map((entry, i) => (
-                    <div key={i} style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: i < dictPopup.results.length - 1 ? '1px solid #333' : 'none' }}>
+                {!dictPopup.isLoading && processedEntries.map((entry, i) => (
+                    <div key={i} style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: i < processedEntries.length - 1 ? '1px solid #333' : 'none' }}>
                         {/* --- HEADER: WORD + TERM TAGS + ANKI BUTTON --- */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                             <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap' }}>
