@@ -1185,15 +1185,6 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                 </div>
                             </label>
                             <label style={checkboxLabelStyle}>
-                                <input type="checkbox" checked={localSettings.addSpaceOnMerge} onChange={(e) => handleChange('addSpaceOnMerge', e.target.checked)} style={checkboxInputStyle} />
-                                <div>
-                                    Add Space on Merge
-                                    <div style={{ opacity: 0.6, fontSize: '0.85em' }}>
-                                        Inserts a space when merging multiple text boxes.
-                                    </div>
-                                </div>
-                            </label>
-                            <label style={checkboxLabelStyle}>
                                 <input type="checkbox" checked={localSettings.enableDoubleClickEdit} onChange={(e) => handleChange('enableDoubleClickEdit', e.target.checked)} style={checkboxInputStyle} />
                                 <div>
                                     Enable Double-Click Edit

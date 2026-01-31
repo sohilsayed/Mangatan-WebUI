@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useOCR } from '@/Manatan/context/OCRContext';
 import { OcrBlock } from '@/Manatan/types'; 
 import { apiRequest } from '@/Manatan/utils/api';
+import { isNoSpaceLanguage } from '@/Manatan/utils/language';
 import { TextBox } from '@/Manatan/components/TextBox';
 import { StatusIcon } from '@/Manatan/components/StatusIcon';
 import { useReaderOverlayStore, useReaderSettingsStore } from '@/features/reader/stores/ReaderStore'; 
@@ -214,7 +215,7 @@ export const ImageOverlay: React.FC<{
         try {
             setOcrStatus(img.src, 'loading');
             let url = `/api/ocr/ocr?url=${encodeURIComponent(img.src)}`;
-            url += `&add_space_on_merge=${settings.addSpaceOnMerge}`;
+            url += `&add_space_on_merge=${!isNoSpaceLanguage(settings.yomitanLanguage)}`;
             url += `&language=${encodeURIComponent(settings.yomitanLanguage)}`;
             if (serverSettings?.authUsername?.trim() && serverSettings?.authPassword?.trim()) {
                 url += `&user=${encodeURIComponent(serverSettings.authUsername.trim())}`;
@@ -236,7 +237,6 @@ export const ImageOverlay: React.FC<{
         setOcrStatus,
         updateOcrData,
         serverSettings,
-        settings.addSpaceOnMerge,
         settings.yomitanLanguage,
     ]);
 
@@ -283,7 +283,7 @@ export const ImageOverlay: React.FC<{
         if (!data) return;
         const b1 = data[idx1];
         const b2 = data[idx2];
-        const separator = settings.addSpaceOnMerge ? ' ' : '\u200B';
+        const separator = isNoSpaceLanguage(settings.yomitanLanguage) ? '\u200B' : ' ';
         const newBlock: OcrBlock = {
             text: b1.text + separator + b2.text,
             tightBoundingBox: { 
@@ -297,7 +297,7 @@ export const ImageOverlay: React.FC<{
         const newData = data.filter((_, i) => i !== idx1 && i !== idx2);
         newData.push(newBlock);
         updateOcrData(img.src, newData);
-    }, [data, img.src, settings.addSpaceOnMerge, updateOcrData]);
+    }, [data, img.src, settings.yomitanLanguage, updateOcrData]);
 
     const handleDelete = useCallback((index: number) => {
         if (!data) return;

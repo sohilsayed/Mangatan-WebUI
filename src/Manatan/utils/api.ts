@@ -1,4 +1,5 @@
 import { DictionaryResult, YomitanLanguage } from '../types';
+import { isNoSpaceLanguage } from '@/Manatan/utils/language';
 
 export type AuthCredentials = { user?: string; pass?: string };
 
@@ -219,7 +220,6 @@ export const preprocessChapter = async (
     baseUrl: string,
     chapterPath: string,
     creds?: AuthCredentials,
-    addSpaceOnMerge?: boolean,
     language?: YomitanLanguage
 ): Promise<void> => {
     const mangaMatch = chapterPath.match(/\/manga\/(\d+)/);
@@ -243,11 +243,11 @@ export const preprocessChapter = async (
         return `${origin}${p}`;
     });
 
-    const body: any = { 
-        base_url: baseUrl, 
-        context: document.title, 
+    const body: any = {
+        base_url: baseUrl,
+        context: document.title,
         pages: absolutePages,
-        add_space_on_merge: addSpaceOnMerge
+        add_space_on_merge: !isNoSpaceLanguage(language),
     };
     if (creds?.user) body.user = creds.user;
     if (creds?.pass) body.pass = creds.pass;

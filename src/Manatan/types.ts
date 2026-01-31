@@ -90,7 +90,6 @@ export interface Settings {
     mobileMode: boolean;
     soloHoverMode: boolean;
     enableOverlay: boolean;
-    addSpaceOnMerge: boolean;
     enableDoubleClickEdit: boolean;
     enableDoubleTapZoom: boolean;
     disableStatusIcon: boolean;
@@ -233,7 +232,6 @@ export const DEFAULT_SETTINGS: Settings = {
     mobileMode: false,
     soloHoverMode: true,
     enableOverlay: true,
-    addSpaceOnMerge: false,
     enableDoubleClickEdit: false,
     enableDoubleTapZoom: false,
     disableStatusIcon: false,

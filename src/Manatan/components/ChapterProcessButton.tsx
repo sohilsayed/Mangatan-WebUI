@@ -5,14 +5,12 @@ import { YomitanLanguage } from '@/Manatan/types';
 interface ChapterProcessButtonProps {
     chapterPath: string; 
     creds?: AuthCredentials;
-    addSpaceOnMerge?: boolean;
     language?: YomitanLanguage;
 }
 
 export const ChapterProcessButton: React.FC<ChapterProcessButtonProps> = ({
     chapterPath,
     creds,
-    addSpaceOnMerge,
     language,
 }) => {
     const [status, setStatus] = useState<ChapterStatus>({ status: 'idle', cached: 0, total: 0 });
@@ -87,7 +85,7 @@ export const ChapterProcessButton: React.FC<ChapterProcessButtonProps> = ({
         setStatus({ status: 'processing', progress: 0, total: 0 }); 
         
         try {
-            await preprocessChapter(apiBaseUrl, chapterPath, creds, addSpaceOnMerge, language);
+            await preprocessChapter(apiBaseUrl, chapterPath, creds, language);
             
             setTimeout(() => {
                 startingRef.current = false;

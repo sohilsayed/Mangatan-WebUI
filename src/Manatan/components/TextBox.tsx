@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState, useLayoutEffect, useEffect, memo 
 import { COLOR_THEMES, OcrBlock } from '@/Manatan/types';
 import { useOCR } from '@/Manatan/context/OCRContext';
 import { cleanPunctuation, lookupYomitan } from '@/Manatan/utils/api';
+import { isNoSpaceLanguage } from '@/Manatan/utils/language';
 import { updateLastCard } from '@/Manatan/utils/anki';
 import { CropperModal } from '@/Manatan/components/CropperModal';
 import { createPortal } from 'react-dom';
@@ -171,12 +172,12 @@ export const TextBox: React.FC<{
         const pxH = block.tightBoundingBox.height * containerHeight;
 
         if (!isEditing) {
-            const displayTxt = cleanPunctuation(block.text, settings.addSpaceOnMerge).replace(/\u200B/g, '\n');
+            const displayTxt = cleanPunctuation(block.text, !isNoSpaceLanguage(settings.yomitanLanguage)).replace(/\u200B/g, '\n');
             setFontSize(calculateFontSize(displayTxt, pxW + adj, pxH + adj, isVertical, settings));
         }
     }, [block, containerWidth, containerHeight, settings, isEditing, isVertical]);
 
-    let displayContent = isEditing ? block.text : cleanPunctuation(block.text, settings.addSpaceOnMerge);
+    let displayContent = isEditing ? block.text : cleanPunctuation(block.text, !isNoSpaceLanguage(settings.yomitanLanguage));
     displayContent = displayContent.replace(/\u200B/g, '\n');
 
     useLayoutEffect(() => {
@@ -253,11 +254,17 @@ export const TextBox: React.FC<{
     }, [settings.ankiFieldMap]);
 
     const getCleanSentence = useCallback(() => {
-        let content = cleanPunctuation(block.text, settings.addSpaceOnMerge);
+        const isNoSpace = isNoSpaceLanguage(settings.yomitanLanguage);
+        const preserveSpaces = !isNoSpace;
+        const joiner = isNoSpace ? '' : ' ';
+        let content = cleanPunctuation(block.text, preserveSpaces);
+        content = content.replace(/[\u200B\u000b\f\r\n]+/g, joiner);
         content = content.replace(/[\u0000-\u001f\u007f]/g, '');
-        content = content.replace(/[\u200B\u000b\f\r\n]+/g, '');
+        if (!isNoSpace) {
+            content = content.replace(/\s{2,}/g, ' ').trim();
+        }
         return content;
-    }, [block.text, settings.addSpaceOnMerge]);
+    }, [block.text, settings.yomitanLanguage]);
 
     const copyTextToClipboard = useCallback(async (text: string) => {
         try {
@@ -544,7 +551,7 @@ export const TextBox: React.FC<{
                 }
             }
 
-            const rawContent = cleanPunctuation(block.text, settings.addSpaceOnMerge);
+            const rawContent = cleanPunctuation(block.text, !isNoSpaceLanguage(settings.yomitanLanguage));
             const cleanContent = rawContent.replace(/[\u200B\n\r]+/g, '');
 
             const encoder = new TextEncoder();
