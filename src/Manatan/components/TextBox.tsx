@@ -93,7 +93,9 @@ export const TextBox: React.FC<{
     }, [contextMenu]);
 
     const prefersVertical =
-        settings.yomitanLanguage === 'japanese' || settings.yomitanLanguage === 'chinese';
+        settings.yomitanLanguage === 'japanese'
+        || settings.yomitanLanguage === 'chinese'
+        || settings.yomitanLanguage === 'cantonese';
     const trimmedText = block.text.replace(/\s+/g, '');
     const charCount = trimmedText.length;
     const verticalByGeometry = prefersVertical
