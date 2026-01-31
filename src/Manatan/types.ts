@@ -15,7 +15,7 @@ export interface SiteConfig {
 
 // Added 'dark' to the allowed types
 export type ColorTheme = 'blue' | 'red' | 'green' | 'orange' | 'purple' | 'turquoise' | 'pink' | 'grey' | 'white' | 'dark';
-export type YomitanLanguage = 'japanese' | 'english' | 'chinese' | 'korean';
+export type YomitanLanguage = 'japanese' | 'english' | 'chinese' | 'korean' | 'arabic';
 
 export interface ServerSettingsData { authUsername?: string; authPassword?: string; }
 

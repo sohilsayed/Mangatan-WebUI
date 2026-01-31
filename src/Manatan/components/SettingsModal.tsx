@@ -462,6 +462,7 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                 <option value="english">English</option>
                                 <option value="chinese">Chinese</option>
                                 <option value="korean">Korean</option>
+                                <option value="arabic">Arabic</option>
                             </select>
                             <div style={{ fontSize: '0.85em', color: '#aaa' }}>
                                 Used when installing or resetting default dictionaries.
