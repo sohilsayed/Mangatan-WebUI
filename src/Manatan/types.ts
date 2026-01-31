@@ -82,6 +82,7 @@ export interface Settings {
     soloHoverMode: boolean;
     enableOverlay: boolean;
     addSpaceOnMerge: boolean;
+    enableDoubleClickEdit: boolean;
     disableStatusIcon: boolean;
     enableYomitan: boolean;
     deleteModifierKey: string;
@@ -220,6 +221,7 @@ export const DEFAULT_SETTINGS: Settings = {
     soloHoverMode: true,
     enableOverlay: true,
     addSpaceOnMerge: false,
+    enableDoubleClickEdit: false,
     disableStatusIcon: false,
     enableYomitan: ENABLE_YOMITAN_DEFAULT,
     // Default to grouped

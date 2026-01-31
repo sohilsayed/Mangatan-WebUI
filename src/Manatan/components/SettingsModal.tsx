@@ -1076,6 +1076,15 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                     </div>
                                 </div>
                             </label>
+                            <label style={checkboxLabelStyle}>
+                                <input type="checkbox" checked={localSettings.enableDoubleClickEdit} onChange={(e) => handleChange('enableDoubleClickEdit', e.target.checked)} style={checkboxInputStyle} />
+                                <div>
+                                    Enable Double-Click Edit
+                                    <div style={{ opacity: 0.6, fontSize: '0.85em' }}>
+                                        Allows double-click to edit OCR text boxes.
+                                    </div>
+                                </div>
+                            </label>
                         </div>
 
                         <h4>Visuals</h4>

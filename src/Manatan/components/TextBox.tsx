@@ -580,7 +580,11 @@ export const TextBox: React.FC<{
                 className={classes}
                 contentEditable={isEditing}
                 suppressContentEditableWarning
-                onDoubleClick={() => setIsEditing(true)}
+                onDoubleClick={() => {
+                    if (settings.enableDoubleClickEdit) {
+                        setIsEditing(true);
+                    }
+                }}
                 onContextMenu={(e) => {
                     if (settings.enableYomitan) {
                         e.preventDefault();
