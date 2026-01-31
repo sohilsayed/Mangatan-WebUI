@@ -135,7 +135,7 @@ export const lookupYomitan = async (
     }
 };
 
-export const getDictionaries = async (): Promise<DictionaryMeta[]> => {
+export const getDictionaries = async (): Promise<DictionaryMeta[] | null> => {
     try {
         const res = await apiRequest<{ dictionaries: any[], status: string }>('/api/yomitan/dictionaries');
         // Backend returns "dictionaries" array with {id: [number], name, priority, enabled}
@@ -147,7 +147,7 @@ export const getDictionaries = async (): Promise<DictionaryMeta[]> => {
         }));
     } catch (e) {
         console.error("Failed to fetch dictionaries", e);
-        return [];
+        return null;
     }
 };
 

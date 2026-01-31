@@ -419,7 +419,7 @@ const getTermTagLabel = (tag: unknown): string => {
     return '';
 };
 
-const buildDefinitionHtml = (entry: DictionaryResult): string => {
+const buildDefinitionHtml = (entry: DictionaryResult, dictionaryName?: string): string => {
     const styleToString = (style: Record<string, any>): string => {
         if (!style) {
             return '';
@@ -480,7 +480,13 @@ const buildDefinitionHtml = (entry: DictionaryResult): string => {
         return generateHTML(content);
     };
 
-    return entry.glossary
+    const glossaryEntries = dictionaryName
+        ? entry.glossary.filter((def) => def.dictionaryName === dictionaryName)
+        : entry.glossary;
+    if (!glossaryEntries.length) {
+        return '';
+    }
+    return glossaryEntries
         .map((def, idx) => {
             const tagsHTML = (def.tags ?? [])
                 .map(
@@ -2330,6 +2336,7 @@ export const AnimeVideoPlayer = ({
         }
     }, [animeId, blobToBase64, currentEpisodeIndex, getAudioCaptureSource, isHlsSource, seekVideoTo, selectedVideoIndex]);
 
+
     const addNoteToAnki = useCallback(
         async (entry: DictionaryResult, overrideImage?: string) => {
             if (!settings.ankiDeck || !settings.ankiModel) {
@@ -2353,6 +2360,12 @@ export const AnimeVideoPlayer = ({
                 }
                 else if (mapType === 'Frequency') fields[ankiField] = getLowestFrequency(entry);
                 else if (mapType === 'Sentence') fields[ankiField] = sentence;
+                else if (typeof mapType === 'string') {
+                    const name = getSingleGlossaryName(mapType);
+                    if (name) {
+                        fields[ankiField] = buildDefinitionHtml(entry, name);
+                    }
+                }
             });
 
             const tags = buildAnkiTags(entry);
@@ -2674,6 +2687,18 @@ export const AnimeVideoPlayer = ({
         () => Object.keys(settings.ankiFieldMap || {}).find((key) => settings.ankiFieldMap?.[key] === 'Target Word'),
         [settings.ankiFieldMap],
     );
+    const singleGlossaryPrefix = 'Single Glossary ';
+    const getSingleGlossaryName = useCallback((value: string): string | null => {
+        if (value.startsWith(singleGlossaryPrefix)) {
+            const name = value.slice(singleGlossaryPrefix.length).trim();
+            return name ? name : null;
+        }
+        if (value.startsWith('Single Glossary:')) {
+            const name = value.replace('Single Glossary:', '').trim();
+            return name ? name : null;
+        }
+        return null;
+    }, []);
 
     const checkDuplicateForEntry = useCallback(
         async (entry: DictionaryResult) => {

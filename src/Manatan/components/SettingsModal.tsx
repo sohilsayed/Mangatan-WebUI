@@ -7,7 +7,14 @@ import { bindTrigger, usePopupState } from 'material-ui-popup-state/hooks';
 import { useOCR } from '@/Manatan/context/OCRContext';
 import { AppStorage } from '@/lib/storage/AppStorage.ts';
 import { COLOR_THEMES, DEFAULT_SETTINGS } from '@/Manatan/types';
-import { apiRequest, getAppVersion, checkForUpdates, triggerAppUpdate, installAppUpdate } from '@/Manatan/utils/api';
+import {
+    apiRequest,
+    getAppVersion,
+    checkForUpdates,
+    triggerAppUpdate,
+    installAppUpdate,
+    getDictionaries,
+} from '@/Manatan/utils/api';
 import { DictionaryManager } from './DictionaryManager';
 import { getAnkiVersion, getDeckNames, getModelNames, getModelFields } from '@/Manatan/utils/anki';
 import { ResetButton } from '@/base/components/buttons/ResetButton.tsx';
@@ -86,7 +93,7 @@ const AnimeHotkeyRow = ({
     );
 };
 
-const MAPPING_OPTIONS = [
+const BASE_MAPPING_OPTIONS = [
     'None',
     'Sentence',
     'Sentence Audio',
@@ -97,11 +104,26 @@ const MAPPING_OPTIONS = [
     'Glossary',
     'Frequency',
 ];
+
+const SINGLE_GLOSSARY_PREFIX = 'Single Glossary ';
+
+const getSingleGlossaryName = (value: string): string | null => {
+    if (value.startsWith(SINGLE_GLOSSARY_PREFIX)) {
+        const name = value.slice(SINGLE_GLOSSARY_PREFIX.length).trim();
+        return name ? name : null;
+    }
+    if (value.startsWith('Single Glossary:')) {
+        const name = value.replace('Single Glossary:', '').trim();
+        return name ? name : null;
+    }
+    return null;
+};
 export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { settings, setSettings, showConfirm, showAlert, showProgress, closeDialog, showDialog, openSetup } = useOCR();
     const [localSettings, setLocalSettings] = useState(settings);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [dictManagerKey, setDictManagerKey] = useState(0);
+    const [dictionaryNames, setDictionaryNames] = useState<string[]>([]);
     const animeHotkeys = useMemo(
         () => ({
             ...DEFAULT_ANIME_HOTKEYS,
@@ -110,6 +132,49 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         [localSettings.animeHotkeys],
     );
     const existingAnimeHotkeys = useMemo(() => Object.values(animeHotkeys).flat(), [animeHotkeys]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const fetchDictionaries = async () => {
+            const list = await getDictionaries();
+            if (!list || cancelled) {
+                return;
+            }
+            const names = Array.from(new Set(list.map((dict) => dict.name).filter(Boolean)));
+            setDictionaryNames(names);
+        };
+        fetchDictionaries();
+        return () => {
+            cancelled = true;
+        };
+    }, [dictManagerKey]);
+
+    const mappingOptions = useMemo(() => {
+        const baseOptions = BASE_MAPPING_OPTIONS.map((option) => ({ value: option, label: option }));
+        const glossaryOptions = dictionaryNames.map((name) => ({
+            value: `${SINGLE_GLOSSARY_PREFIX}${name}`,
+            label: `${SINGLE_GLOSSARY_PREFIX}${name}`,
+        }));
+
+        const selectedGlossaryNames = new Set<string>();
+        Object.values(localSettings.ankiFieldMap || {}).forEach((value) => {
+            if (typeof value !== 'string') {
+                return;
+            }
+            const name = getSingleGlossaryName(value);
+            if (!name || dictionaryNames.includes(name)) {
+                return;
+            }
+            selectedGlossaryNames.add(name);
+        });
+
+        const missingGlossaryOptions = Array.from(selectedGlossaryNames).map((name) => ({
+            value: `${SINGLE_GLOSSARY_PREFIX}${name}`,
+            label: `${SINGLE_GLOSSARY_PREFIX}${name} (missing)`,
+        }));
+
+        return [...baseOptions, ...glossaryOptions, ...missingGlossaryOptions];
+    }, [dictionaryNames, localSettings.ankiFieldMap]);
 
     const updateAnimeHotkey = useCallback((hotkey: AnimeHotkey, keys: string[]) => {
         setLocalSettings((prev) => ({
@@ -748,8 +813,10 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                                                                     value={(localSettings.ankiFieldMap as any)?.[field] || 'None'}
                                                                                     onChange={e => handleFieldMapChange(field, e.target.value)}
                                                                                 >
-                                                                                    {MAPPING_OPTIONS.map(opt => (
-                                                                                        <option key={opt} value={opt}>{opt}</option>
+                                                                                    {mappingOptions.map((opt) => (
+                                                                                        <option key={opt.value} value={opt.value}>
+                                                                                            {opt.label}
+                                                                                        </option>
                                                                                     ))}
                                                                                 </select>
                                                                             </td>

@@ -167,6 +167,19 @@ const AnkiButtons: React.FC<{
         const fields: Record<string, string> = {};
         const map = settings.ankiFieldMap || {};
 
+        const singleGlossaryPrefix = 'Single Glossary ';
+        const getSingleGlossaryName = (value: string): string | null => {
+            if (value.startsWith(singleGlossaryPrefix)) {
+                const name = value.slice(singleGlossaryPrefix.length).trim();
+                return name ? name : null;
+            }
+            if (value.startsWith('Single Glossary:')) {
+                const name = value.replace('Single Glossary:', '').trim();
+                return name ? name : null;
+            }
+            return null;
+        };
+
         // --- HTML GENERATION HELPERS ---
         
         const styleToString = (style: any) => {
@@ -250,7 +263,14 @@ const AnkiButtons: React.FC<{
             return Math.min(...numbers).toString();
         };
 
-            const definitionHTML = entry.glossary.map((def, idx) => {
+        const buildGlossaryHtml = (dictionaryName?: string): string => {
+            const glossaryEntries = dictionaryName
+                ? entry.glossary.filter((def) => def.dictionaryName === dictionaryName)
+                : entry.glossary;
+            if (!glossaryEntries.length) {
+                return '';
+            }
+            return glossaryEntries.map((def, idx) => {
             const tagsHTML = def.tags.map(t => 
                 `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #666; vertical-align: middle;">${t}</span>`
             ).join('');
@@ -276,6 +296,7 @@ const AnkiButtons: React.FC<{
                 </div>
             `;
         }).join('');
+        };
 
         // Collect all tags from all glossary entries
         const allTags = new Set(['manatan']);
@@ -286,14 +307,21 @@ const AnkiButtons: React.FC<{
             else if (t && typeof t === 'object' && t.name) allTags.add(t.name);
         });
 
+        const sentence = dictPopup.context?.sentence || '';
         // Populate Fields
         for (const [ankiField, mapType] of Object.entries(map)) {
             if (mapType === 'Target Word') fields[ankiField] = entry.headword;
             else if (mapType === 'Reading') fields[ankiField] = entry.reading;
             else if (mapType === 'Furigana') fields[ankiField] = generateAnkiFurigana(entry.furigana || []);
-            else if (mapType === 'Definition' || mapType === 'Glossary') fields[ankiField] = definitionHTML;
+            else if (mapType === 'Definition' || mapType === 'Glossary') fields[ankiField] = buildGlossaryHtml();
             else if (mapType === 'Frequency') fields[ankiField] = getLowestFrequency();
-            else if (mapType === 'Sentence') fields[ankiField] = dictPopup.context?.sentence || '';
+            else if (mapType === 'Sentence') fields[ankiField] = sentence;
+            else if (typeof mapType === 'string') {
+                const name = getSingleGlossaryName(mapType);
+                if (name) {
+                    fields[ankiField] = buildGlossaryHtml(name);
+                }
+            }
         }
 
         try {
