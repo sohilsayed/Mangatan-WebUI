@@ -27,8 +27,10 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import RotateLeftIcon from '@mui/icons-material/RotateLeft';
 import RotateRightIcon from '@mui/icons-material/RotateRight';
-import SkipNextIcon from '@mui/icons-material/SkipNext';
-import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
+import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
+import KeyboardDoubleArrowLeftIcon from '@mui/icons-material/KeyboardDoubleArrowLeft';
+import KeyboardDoubleArrowRightIcon from '@mui/icons-material/KeyboardDoubleArrowRight';
 import VideoSettingsIcon from '@mui/icons-material/OndemandVideo';
 import SubtitlesIcon from '@mui/icons-material/Subtitles';
 import SpeedIcon from '@mui/icons-material/Speed';
@@ -3792,6 +3794,7 @@ export const AnimeVideoPlayer = ({
                                                         }}
                                                         title="Anki settings missing"
                                                         sx={{ color: '#d04a4a' }}
+                                                        aria-label="Anki settings missing"
                                                     >
                                                         <CloseIcon fontSize="small" />
                                                     </IconButton>
@@ -3806,6 +3809,7 @@ export const AnimeVideoPlayer = ({
                                                                         disabled
                                                                         title="Adding card..."
                                                                         sx={{ color: '#888' }}
+                                                                        aria-label="Adding card"
                                                                     >
                                                                         <HourglassEmptyIcon fontSize="small" />
                                                                     </IconButton>
@@ -3822,6 +3826,7 @@ export const AnimeVideoPlayer = ({
                                                                         }}
                                                                         title="Open in Anki"
                                                                         sx={{ color: '#2ecc71' }}
+                                                                        aria-label="Open in Anki"
                                                                     >
                                                                         <MenuBookIcon fontSize="small" />
                                                                     </IconButton>
@@ -3837,6 +3842,7 @@ export const AnimeVideoPlayer = ({
                                                                         }}
                                                                         title="Add to Anki"
                                                                         sx={{ color: '#4fb0ff' }}
+                                                                        aria-label="Add to Anki"
                                                                     >
                                                                         <AddCircleOutlineIcon fontSize="small" />
                                                                     </IconButton>
@@ -3848,6 +3854,7 @@ export const AnimeVideoPlayer = ({
                                                                     disabled
                                                                     title="Checking duplicates"
                                                                     sx={{ color: '#888' }}
+                                                                    aria-label="Checking duplicates"
                                                                 >
                                                                     <HourglassEmptyIcon fontSize="small" />
                                                                 </IconButton>
@@ -3869,6 +3876,7 @@ export const AnimeVideoPlayer = ({
                                                                     title={isPending ? 'Updating card...' : 'Update last card'}
                                                                     sx={{ color: isPending ? '#888' : '#4fb0ff' }}
                                                                     disabled={isPending}
+                                                                    aria-label={isPending ? 'Updating card' : 'Update last card'}
                                                                 >
                                                                     <NoteAddIcon fontSize="small" />
                                                                 </IconButton>
@@ -4015,6 +4023,8 @@ export const AnimeVideoPlayer = ({
                                         setEpisodeMenuAnchor(event.currentTarget);
                                     }}
                                     color="inherit"
+                                    aria-label="Episodes"
+                                    title="Episodes"
                                 >
                                     <FormatListBulletedIcon />
                                 </IconButton>
@@ -4026,6 +4036,8 @@ export const AnimeVideoPlayer = ({
                                     setVideoMenuAnchor(event.currentTarget);
                                 }}
                                 color="inherit"
+                                aria-label="Video options"
+                                title="Video options"
                             >
                                 <VideoSettingsIcon />
                             </IconButton>
@@ -4036,6 +4048,8 @@ export const AnimeVideoPlayer = ({
                                     setSubtitleMenuAnchor(event.currentTarget);
                                 }}
                                 color="inherit"
+                                aria-label="Subtitle options"
+                                title="Subtitle options"
                             >
                                 <SubtitlesIcon />
                             </IconButton>
@@ -4046,6 +4060,8 @@ export const AnimeVideoPlayer = ({
                                     setSpeedMenuAnchor(event.currentTarget);
                                 }}
                                 color="inherit"
+                                aria-label="Playback speed"
+                                title="Playback speed"
                             >
                                 <SpeedIcon />
                             </IconButton>
@@ -4072,6 +4088,7 @@ export const AnimeVideoPlayer = ({
                                 }}
                                 color="inherit"
                                 aria-label="Manatan Settings"
+                                title="Manatan Settings"
                             >
                                 <Box
                                     component="img"
@@ -4087,6 +4104,8 @@ export const AnimeVideoPlayer = ({
                                         void toggleFullscreen();
                                     }}
                                     color="inherit"
+                                    aria-label={isPageFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                                    title={isPageFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
                                 >
                                     {isPageFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
                                 </IconButton>
@@ -4099,6 +4118,8 @@ export const AnimeVideoPlayer = ({
                             }}
                             color="inherit"
                             sx={{ pointerEvents: 'auto' }}
+                            aria-label="Close player"
+                            title="Close player"
                         >
                             <CloseIcon />
                         </IconButton>
@@ -4243,7 +4264,7 @@ export const AnimeVideoPlayer = ({
                                 )}
                             </Box>
                             <Stack spacing={0.5} alignItems="center" sx={{ pointerEvents: 'auto' }}>
-                                <Stack direction="row" spacing={1} alignItems="center">
+                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 28 }}>
                                     {(() => {
                                         const previousCue = getSubtitleSyncTarget('previous');
                                         return (
@@ -4258,7 +4279,7 @@ export const AnimeVideoPlayer = ({
                                                 aria-label="Align to previous subtitle start"
                                                 title="Align to previous subtitle start"
                                             >
-                                                <SkipPreviousIcon fontSize="small" />
+                                                <KeyboardDoubleArrowLeftIcon fontSize="small" />
                                             </IconButton>
                                         );
                                     })()}
@@ -4276,12 +4297,24 @@ export const AnimeVideoPlayer = ({
                                                 aria-label="Align to next subtitle start"
                                                 title="Align to next subtitle start"
                                             >
-                                                <SkipNextIcon fontSize="small" />
+                                                <KeyboardDoubleArrowRightIcon fontSize="small" />
                                             </IconButton>
                                         );
                                     })()}
                                 </Stack>
-                                <Stack direction="row" spacing={1} alignItems="center">
+                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 28 }}>
+                                    <IconButton
+                                        size="small"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            setSubtitleOffsetMs((prev) => (Number.isFinite(prev) ? prev : 0) - 100);
+                                        }}
+                                        color="inherit"
+                                        aria-label="Decrease subtitle offset 100 ms"
+                                        title="Shift subtitle offset -100 ms"
+                                    >
+                                        <KeyboardArrowLeftIcon fontSize="small" />
+                                    </IconButton>
                                     <Typography
                                         variant="caption"
                                         onClick={(event) => {
@@ -4292,30 +4325,22 @@ export const AnimeVideoPlayer = ({
                                             event.stopPropagation();
                                             openSubtitleOffsetDialog();
                                         }}
-                                        sx={{ cursor: 'pointer' }}
+                                        sx={{ cursor: 'pointer', minWidth: 64, textAlign: 'center' }}
                                     >
                                         {safeSubtitleOffsetMs} ms
                                     </Typography>
-                                <IconButton
-                                    size="small"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        setSubtitleOffsetMs((prev) => (Number.isFinite(prev) ? prev : 0) - 100);
-                                    }}
-                                    color="inherit"
-                                >
-                                    -
-                                </IconButton>
-                                <IconButton
-                                    size="small"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        setSubtitleOffsetMs((prev) => (Number.isFinite(prev) ? prev : 0) + 100);
-                                    }}
-                                    color="inherit"
-                                >
-                                    +
-                                </IconButton>
+                                    <IconButton
+                                        size="small"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            setSubtitleOffsetMs((prev) => (Number.isFinite(prev) ? prev : 0) + 100);
+                                        }}
+                                        color="inherit"
+                                        aria-label="Increase subtitle offset 100 ms"
+                                        title="Shift subtitle offset +100 ms"
+                                    >
+                                        <KeyboardArrowRightIcon fontSize="small" />
+                                    </IconButton>
                                 </Stack>
                             </Stack>
                         </Stack>
